@@ -34,7 +34,11 @@
             >
               {{ projectSummarizing ? t('common.loading') : t('project.aiSummary') }}
             </button>
-            <button @click="router.push(`/workspace/${route.params.slug}/project/${projectId}/issues/new?view=${issueView}`)" class="inline-flex items-center gap-1.5 px-3 py-1.5 bg-indigo-600 text-white text-xs font-medium rounded-md hover:bg-indigo-700 transition shadow-sm">
+            <button
+              v-if="canCreateIssue"
+              @click="router.push(`/workspace/${route.params.slug}/project/${projectId}/issues/new?view=${issueView}`)"
+              class="inline-flex items-center gap-1.5 px-3 py-1.5 bg-indigo-600 text-white text-xs font-medium rounded-md hover:bg-indigo-700 transition shadow-sm"
+            >
               <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/></svg>
               {{ t('project.create') }}
             </button>
@@ -91,6 +95,7 @@
       <!-- 标签页内容 -->
       <div v-if="activeTab === 'issues'">
         <QuickCreateInput
+          v-if="canCreateIssue"
           :project-id="projectId"
           :workspace-id="workspaceId"
           :issue-types="issueTypes"
@@ -367,6 +372,7 @@ import type { ModuleResponse } from '@/types/module'
 import { useModuleStore } from '@/stores/module'
 import { extractSearchTerm } from '@/utils/highlight'
 import { markAutoTriagePending } from '@/utils/autoTriagePref'
+import { useProjectPermissions } from '@/composables/usePermission'
 
 const route = useRoute()
 const router = useRouter()
@@ -664,6 +670,9 @@ async function handleModuleDelete(module: ModuleResponse | any) {
 const workspaceId = ref(0)
 const projectId = ref(0)
 const slug = ref('')
+
+const { can: canInProject } = useProjectPermissions(() => projectId.value)
+const canCreateIssue = computed(() => canInProject('issue:create'))
 
 // Deep-links like ?tab=settings|pages|dashboards set activeTab on initial
 // load, but the watcher on activeTab only fires on *changes* (not the
