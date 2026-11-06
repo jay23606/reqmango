@@ -48,6 +48,9 @@ func importTestDB(t *testing.T) *gorm.DB {
 	require.NoError(t, db.AutoMigrate(
 		&model.Project{}, &model.State{}, &model.IssueType{}, &model.IssueTypeImport{}, &model.Label{},
 		&model.User{}, &model.WorkspaceMember{}, &model.ProjectMember{}, &model.Issue{},
+		&model.CustomField{}, &model.IssueTypeField{}, &model.IssueCustomFieldValue{}, &model.IssueActivity{},
+		&model.IssueAssignee{}, &model.IssueLabel{}, &model.IssueCycle{}, &model.Cycle{},
+		&model.ModuleIssue{}, &model.Module{}, &model.Webhook{},
 	))
 	return db
 }
@@ -58,6 +61,26 @@ func importTestProject(t *testing.T, db *gorm.DB, workspaceID uint64) model.Proj
 	require.NoError(t, db.Create(&project).Error)
 	require.NoError(t, db.Create(&model.State{Name: "Backlog", Group: "backlog", IsDefault: true, ProjectID: &project.ID, WorkspaceID: workspaceID}).Error)
 	return project
+}
+
+// importTestProjectWithImportedBug seeds a workspace Bug type (imported into the project) with one required custom field.
+func importTestProjectWithImportedBugAndRequiredCF(t *testing.T, db *gorm.DB, workspaceID uint64) (project model.Project, fieldDisplayName string) {
+	t.Helper()
+	project = importTestProject(t, db, workspaceID)
+	bug := &model.IssueType{Name: "Bug", WorkspaceID: workspaceID}
+	require.NoError(t, db.Create(bug).Error)
+	require.NoError(t, db.Create(&model.IssueTypeImport{
+		ProjectID:       project.ID,
+		WorkspaceTypeID: bug.ID,
+		WorkspaceID:     workspaceID,
+	}).Error)
+	fieldDisplayName = "复现步骤"
+	f := &model.CustomField{Name: fieldDisplayName, FieldType: "text", WorkspaceID: workspaceID}
+	require.NoError(t, db.Create(f).Error)
+	require.NoError(t, db.Create(&model.IssueTypeField{
+		TypeID: bug.ID, FieldID: f.ID, IsRequired: true,
+	}).Error)
+	return project, fieldDisplayName
 }
 
 func TestParseCSVRecordsAppliesExplicitMapping(t *testing.T) {
@@ -195,4 +218,47 @@ func TestImportRejectsTooManyRows(t *testing.T) {
 	_, err := svc.importItems(project.ID, 7, 1, items, request.ImportOptions{DryRun: true})
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "5000")
+}
+
+func TestImportFormalWriteRejectsMissingMandatoryCustomField(t *testing.T) {
+	db := importTestDB(t)
+	project, fieldName := importTestProjectWithImportedBugAndRequiredCF(t, db, 7)
+	svc := NewIssueService(db, nil, nil, nil, nil)
+
+	result, err := svc.importItems(project.ID, 7, 1, []request.ImportIssueItem{
+		{Name: "import 缺必填", StateName: "Backlog", TypeName: "Bug"},
+	}, request.ImportOptions{DryRun: false})
+	require.NoError(t, err)
+	require.False(t, result.DryRun)
+	require.Equal(t, 1, result.FailCount)
+	require.Zero(t, result.SuccessCount)
+	require.Len(t, result.Errors, 1)
+	require.Contains(t, result.Errors[0].Message, "缺少必填字段")
+	require.Contains(t, result.Errors[0].Message, fieldName)
+	require.Empty(t, result.ImportedIDs)
+
+	var n int64
+	require.NoError(t, db.Model(&model.Issue{}).Where("project_id = ?", project.ID).Count(&n).Error)
+	require.Zero(t, n, "must not create issue when mandatory custom field is missing")
+}
+
+func TestImportDryRunReportsMissingMandatoryCustomField(t *testing.T) {
+	db := importTestDB(t)
+	project, fieldName := importTestProjectWithImportedBugAndRequiredCF(t, db, 7)
+	svc := NewIssueService(db, nil, nil, nil, nil)
+
+	result, err := svc.importItems(project.ID, 7, 1, []request.ImportIssueItem{
+		{Name: "dry 缺必填", StateName: "Backlog", TypeName: "Bug"},
+	}, request.ImportOptions{DryRun: true})
+	require.NoError(t, err)
+	require.True(t, result.DryRun)
+	require.Equal(t, 1, result.FailCount)
+	require.Zero(t, result.SuccessCount)
+	require.Len(t, result.Errors, 1)
+	require.Contains(t, result.Errors[0].Message, fieldName)
+	require.Empty(t, result.ImportedIDs)
+
+	var n int64
+	require.NoError(t, db.Model(&model.Issue{}).Where("project_id = ?", project.ID).Count(&n).Error)
+	require.Zero(t, n, "dry run must not persist issues")
 }

@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"encoding/csv"
+	"errors"
 	"fmt"
 	"io"
 	"log"
@@ -2267,6 +2268,25 @@ func (s *IssueService) importItems(projectID, workspaceID, userID uint64, items 
 			warn(row, "parent", fmt.Sprintf("父标题 %q 不在本次导入中，该行将作为顶层工作项", item.ParentTitle))
 		}
 
+		// Mandatory custom fields (type binding): same rule as Create; import has no CF columns yet.
+		if typeID > 0 {
+			cfValues := importCustomFieldValues(item)
+			if err := s.validateMandatoryCustomFields(projectID, workspaceID, typeID, cfValues); err != nil {
+				result.FailCount++
+				msg := err.Error()
+				var appErr *common.AppError
+				if errors.As(err, &appErr) && appErr.Message != "" {
+					msg = appErr.Message
+				}
+				result.Errors = append(result.Errors, response.ImportError{
+					Row:     row,
+					Title:   item.Name,
+					Message: msg,
+				})
+				continue
+			}
+		}
+
 		rows = append(rows, resolvedRow{
 			row:         row,
 			item:        item,
@@ -2687,6 +2707,14 @@ func (s *IssueService) ExportIssues(projectID uint64) ([]ExportIssueItem, error)
 		result = append(result, item)
 	}
 	return result, nil
+}
+
+// importCustomFieldValues maps parsed import row data to custom field IDs.
+// CSV/JSON import does not carry custom fields yet; callers pass the result
+// (nil / empty) into validateMandatoryCustomFields alongside the resolved type.
+func importCustomFieldValues(item request.ImportIssueItem) map[uint64]interface{} {
+	_ = item
+	return nil
 }
 
 func (s *IssueService) validateMandatoryCustomFields(projectID, workspaceID, issueTypeID uint64, cfValues map[uint64]interface{}) error {
