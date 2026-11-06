@@ -921,7 +921,7 @@ func SetupRoutes(r *gin.Engine, db *gorm.DB, cfg *config.Config) {
 		issues := v1.Group("/issues", authMiddleware)
 		{
 			// CRUD
-			issues.POST("", issueH.Create)                                                                            // ?project_id=&workspace_id=
+			issues.POST("", middleware.RequirePermission(db, "issue:create", "project"), issueH.Create) // ?project_id=&workspace_id=
 			issues.GET("", issueH.List)                                                                               // ?project_id=&filters...
 			issues.GET("/tree", issueH.Tree)                                                                          // ?project_id=&search=&limit=&offset=
 			issues.GET("/statistics", issueH.GetStatistics)                                                           // ?project_id=

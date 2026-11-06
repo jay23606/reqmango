@@ -24,7 +24,7 @@ func TestRequirePermission(t *testing.T) {
 		&model.Issue{}, &model.Permission{}, &model.Role{}))
 
 	perms := map[string]*model.Permission{}
-	for _, code := range []string{"issue:edit", "issue:delete", "workflow:manage"} {
+	for _, code := range []string{"issue:create", "issue:edit", "issue:delete", "workflow:manage"} {
 		p := &model.Permission{Code: code, Name: code, Resource: "x", Action: "x"}
 		require.NoError(t, db.Create(p).Error)
 		perms[code] = p
@@ -36,7 +36,7 @@ func TestRequirePermission(t *testing.T) {
 		}
 		require.NoError(t, db.Create(&r).Error)
 	}
-	role(20, true, "issue:edit", "issue:delete", "workflow:manage")
+	role(20, true, "issue:create", "issue:edit", "issue:delete", "workflow:manage")
 	role(15, true, "issue:edit")
 	role(5, true)
 	role(15, false, "issue:delete") // a custom role at the member level must not leak its permissions
@@ -86,6 +86,7 @@ func TestRequirePermission(t *testing.T) {
 	r.POST("/issues/bulk/update", RequirePermission(db, "issue:edit", "project"), echoBody)
 	r.POST("/issues/bulk/delete", RequirePermission(db, "issue:delete", "project"), echoBody)
 	r.POST("/issues/bulk/move", RequirePermission(db, "issue:edit", "project"), echoBody)
+	r.POST("/issues", RequirePermission(db, "issue:create", "project"), echoBody)
 	r.PUT("/projects/:projectId/sla", RequirePermission(db, "workflow:manage", "project"), echoBody)
 
 	do := func(user, method, path, body string) *httptest.ResponseRecorder {
@@ -128,6 +129,11 @@ func TestRequirePermission(t *testing.T) {
 	assert.Equal(t, 403, status("member", "POST", "/issues/bulk/move",
 		`{"issue_ids":[`+uitoa(ownIssue.ID)+`],"target_project_id":`+uitoa(foreign.ID)+`}`), "the target project is checked")
 
+	createIssue := "/issues?project_id=" + uitoa(own.ID)
+	assert.Equal(t, 200, status("admin", "POST", createIssue, ""))
+	assert.Equal(t, 403, status("member", "POST", createIssue, ""))
+	assert.Equal(t, 403, status("guest", "POST", createIssue, ""))
+
 	assert.Equal(t, 200, status("admin", "PUT", "/projects/"+uitoa(own.ID)+"/sla", ""))
 	assert.Equal(t, 403, status("member", "PUT", "/projects/"+uitoa(own.ID)+"/sla", ""))
 
@@ -136,7 +142,7 @@ func TestRequirePermission(t *testing.T) {
 		codes []string
 		level int
 	}{
-		{admin, []string{"issue:delete", "issue:edit", "workflow:manage"}, 20},
+		{admin, []string{"issue:create", "issue:delete", "issue:edit", "workflow:manage"}, 20},
 		{member, []string{"issue:edit"}, 15},
 		{guestWithProjectRole, []string{"issue:edit"}, 15},
 		{guest, []string{}, 5},
@@ -147,5 +153,5 @@ func TestRequirePermission(t *testing.T) {
 		assert.Equal(t, tc.level, level, "user %d", tc.user)
 	}
 	codes, _ := ProjectPermissions(db, &model.User{BaseModel: model.BaseModel{ID: root}, IsSuperuser: true}, own.ID)
-	assert.Len(t, codes, 3)
+	assert.Len(t, codes, 4)
 }
