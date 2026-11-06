@@ -127,6 +127,59 @@ func TestCreate_StillRequiresWhenVisible(t *testing.T) {
 	require.Contains(t, appErr.Message, fieldName)
 }
 
+func TestCreate_OmittedTypeID_UsesDefaultForMandatoryCFCheck(t *testing.T) {
+	db := setupTestDB(t)
+	require.NoError(t, db.AutoMigrate(
+		&model.CustomField{},
+		&model.ConditionalField{},
+		&model.IssueTypeField{},
+		&model.IssueTypeImport{},
+		&model.IssueCustomFieldValue{},
+		&model.IssueActivity{},
+		&model.IssueAssignee{},
+		&model.IssueLabel{},
+		&model.Label{},
+		&model.IssueCycle{},
+		&model.Cycle{},
+		&model.ModuleIssue{},
+		&model.Module{},
+		&model.Webhook{},
+		&model.IssueType{},
+	))
+	wsID, projID, userID := seedTestData(t, db)
+	ensureDefaultIssueState(t, db, projID)
+
+	var taskType model.IssueType
+	require.NoError(t, db.Where("workspace_id = ? AND name = ?", wsID, "Task").First(&taskType).Error)
+	require.NoError(t, db.Model(&taskType).Update("is_default", false).Error)
+
+	bugType := &model.IssueType{Name: "Bug", WorkspaceID: wsID, IsDefault: true}
+	require.NoError(t, db.Create(bugType).Error)
+
+	fieldName := "必填说明"
+	fieldID := seedRequiredCF(t, db, wsID, bugType.ID, fieldName)
+
+	svc := NewIssueService(db, nil, NewWebhookService(db), nil, nil)
+
+	_, err := svc.Create(&request.IssueCreateRequest{
+		Name: "quick-create no type id",
+	}, projID, wsID, userID)
+	require.Error(t, err)
+	appErr, ok := err.(*common.AppError)
+	require.True(t, ok, "want *common.AppError, got %T: %v", err, err)
+	require.Equal(t, common.ErrBadRequest, appErr.ErrorCode)
+	require.Contains(t, appErr.Message, "缺少必填字段")
+	require.Contains(t, appErr.Message, fieldName)
+
+	var issueCount int64
+	require.NoError(t, db.Model(&model.Issue{}).Where("project_id = ?", projID).Count(&issueCount).Error)
+	require.Zero(t, issueCount, "issue row must not be created when validation fails before tx")
+
+	var cfCount int64
+	require.NoError(t, db.Model(&model.IssueCustomFieldValue{}).Where("field_id = ?", fieldID).Count(&cfCount).Error)
+	require.Zero(t, cfCount)
+}
+
 func seedRequiredCF(t *testing.T, db *gorm.DB, wsID, typeID uint64, name string) uint64 {
 	t.Helper()
 	f := &model.CustomField{Name: name, FieldType: "text", WorkspaceID: wsID}
