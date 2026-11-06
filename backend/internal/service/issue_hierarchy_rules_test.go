@@ -258,3 +258,98 @@ func TestIssueHierarchy_AC04_2_ParentTypeIDMustMatchParentIssueType(t *testing.T
 	requireBadRequestMessageContains(t, err, "parent type does not allow this child type")
 	require.Equal(t, before, countIssues(t, db, projID))
 }
+
+// Sub-items panel / children list: a legal child with parent_id appears in IssueService.Children;
+// an illegal depth create leaves the children list unchanged.
+func TestIssueSubItems_LegalChildAppearsInChildrenList(t *testing.T) {
+	db := setupTestDB(t)
+	hierarchyTestMigrate(t, db)
+	wsID, projID, userID := seedTestData(t, db)
+	ensureDefaultIssueState(t, db, projID)
+
+	var taskType model.IssueType
+	require.NoError(t, db.Where("workspace_id = ? AND name = ?", wsID, "Task").First(&taskType).Error)
+	importWorkspaceTypesForProject(t, db, projID, wsID, taskType.ID)
+
+	svc := NewIssueService(db, nil, NewWebhookService(db), nil, nil)
+
+	tid := taskType.ID
+	parent, err := svc.Create(&request.IssueCreateRequest{
+		Name:   "sub-items-parent",
+		TypeID: &tid,
+	}, projID, wsID, userID)
+	require.NoError(t, err)
+
+	pid := parent.ID
+	// Omit TypeID so the child inherits the parent's type (explicit Task is workspace root level 0 and rejects a parent).
+	child, err := svc.Create(&request.IssueCreateRequest{
+		Name:     "sub-items-child",
+		ParentID: &pid,
+	}, projID, wsID, userID)
+	require.NoError(t, err)
+	require.NotNil(t, child.ParentID)
+	require.Equal(t, parent.ID, *child.ParentID)
+
+	children, err := svc.Children(parent.ID)
+	require.NoError(t, err)
+	require.Len(t, children, 1)
+	require.Equal(t, child.ID, children[0].ID)
+	require.Equal(t, "sub-items-child", children[0].Name)
+}
+
+func TestIssueSubItems_MaxDepthFailureLeavesChildrenListUnchanged(t *testing.T) {
+	db := setupTestDB(t)
+	hierarchyTestMigrate(t, db)
+	wsID, projID, userID := seedTestData(t, db)
+	ensureDefaultIssueState(t, db, projID)
+
+	var taskType model.IssueType
+	require.NoError(t, db.Where("workspace_id = ? AND name = ?", wsID, "Task").First(&taskType).Error)
+	importWorkspaceTypesForProject(t, db, projID, wsID, taskType.ID)
+
+	svc := NewIssueService(db, nil, NewWebhookService(db), nil, nil)
+
+	tid := taskType.ID
+	var last *response.IssueResponse
+	for i := 0; i < 6; i++ {
+		var parentID *uint64
+		if last != nil {
+			p := last.ID
+			parentID = &p
+		}
+		var resp *response.IssueResponse
+		var err error
+		if parentID == nil {
+			resp, err = svc.Create(&request.IssueCreateRequest{
+				Name:   "depth-chain-root-b",
+				TypeID: &tid,
+			}, projID, wsID, userID)
+		} else {
+			resp, err = svc.Create(&request.IssueCreateRequest{
+				Name:     "depth-chain-child-b",
+				ParentID: parentID,
+			}, projID, wsID, userID)
+		}
+		require.NoError(t, err)
+		last = resp
+	}
+
+	var parentAtDepth5 model.Issue
+	require.NoError(t, db.Where("project_id = ?", projID).Order("depth DESC").First(&parentAtDepth5).Error)
+	require.Equal(t, 5, parentAtDepth5.Depth)
+
+	childrenBefore, err := svc.Children(parentAtDepth5.ID)
+	require.NoError(t, err)
+	nBefore := len(childrenBefore)
+
+	ppid := parentAtDepth5.ID
+	_, err = svc.Create(&request.IssueCreateRequest{
+		Name:     "too-deep-for-children-api",
+		ParentID: &ppid,
+	}, projID, wsID, userID)
+	requireBadRequestMessageContains(t, err, "Maximum hierarchy depth")
+
+	childrenAfter, err := svc.Children(parentAtDepth5.ID)
+	require.NoError(t, err)
+	require.Len(t, childrenAfter, nBefore)
+}
