@@ -24,9 +24,10 @@ status (Chinese) lives in [docs/dev/pipeline-status.md](docs/dev/pipeline-status
 
 ## Next — close the remaining work-item gaps
 
-Candidates from the [Plane gap analysis](docs/dev/plane-gap-implementation-plan.md),
-in the order we are likely to pick them up. Each is an issue first, with the
-design and file list in the plan:
+Requirements for this tranche are drafted as SRS (Given/When/Then) under
+[docs/specs/](docs/specs/README.md); process: [docs/dev/sdd.md](docs/dev/sdd.md).
+Freeze those specs before design/plan. Historical task notes:
+[Plane gap analysis](docs/dev/plane-gap-implementation-plan.md).
 
 | Candidate | Why it matters |
 |-----------|----------------|
