@@ -2,6 +2,7 @@
   <div class="attachment-manager">
     <!-- 上传区域 -->
     <div
+      v-if="!readOnly"
       class="border-2 border-dashed border-gray-300 rounded-lg p-6 text-center hover:border-indigo-400 transition-colors cursor-pointer"
       :class="{ 'border-indigo-500 bg-indigo-50': isDragging }"
       @dragover.prevent="isDragging = true"
@@ -25,6 +26,9 @@
       <p class="mt-1 text-xs text-gray-500">
         {{ t('attachment.supportAny') }}
       </p>
+    </div>
+    <div v-else class="rounded-lg border border-gray-200 bg-gray-50 px-4 py-3 text-sm text-gray-600">
+      {{ t('attachment.readOnlyHint') }}
     </div>
 
     <!-- 上传进度 -->
@@ -89,7 +93,8 @@
 
             <!-- 删除 -->
             <button
-              @click="deleteAttachment(attachment)"
+              v-if="!readOnly"
+              @click.stop="deleteAttachment(attachment)"
               class="p-1.5 text-gray-400 hover:text-red-600 rounded"
               :title="t('attachment.delete')"
             >
@@ -106,22 +111,35 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted } from 'vue'
+import { ref, onMounted, watch } from 'vue'
 import { useI18n } from '@/composables/useI18n'
 import attachmentApi from '@/api/attachment'
 import { useConfirm } from '@/composables/useConfirm'
+import { useToast } from '@/composables/useToast'
 import AttachmentPreview from '@/components/AttachmentPreview.vue'
 
 const { t } = useI18n()
 
 // Props
-const props = defineProps<{
-  issueId?: number
-  projectId?: number
+const props = withDefaults(
+  defineProps<{
+    issueId?: number
+    projectId?: number
+    /** When true, hide upload and delete; list/download remain. */
+    readOnly?: boolean
+  }>(),
+  { readOnly: false },
+)
+
+const emit = defineEmits<{
+  (e: 'countChange', count: number): void
 }>()
 
 // State
 const { confirm } = useConfirm()
+const toast = useToast()
+
+const maxAttachmentBytes = 10 * 1024 * 1024
 const attachments = ref<any[]>([])
 const uploadingFiles = ref<File[]>([])
 const showPreview = ref(false)
@@ -134,17 +152,24 @@ const isDragging = ref(false)
 const fileInput = ref<HTMLInputElement | null>(null)
 
 // Methods
+function emitCount() {
+  emit('countChange', attachments.value.length)
+}
+
 async function loadAttachments() {
   try {
     if (props.issueId) {
       attachments.value = await attachmentApi.listIssueAttachments(props.issueId)
+      emitCount()
     }
   } catch (error) {
     console.error('Failed to load attachments:', error)
+    toast.error(t('attachment.loadFailed'))
   }
 }
 
 function triggerFileInput() {
+  if (props.readOnly) return
   fileInput.value?.click()
 }
 
@@ -157,39 +182,57 @@ async function handleFileSelect(event: Event) {
 
 async function handleDrop(event: DragEvent) {
   isDragging.value = false
+  if (props.readOnly) return
   if (event.dataTransfer?.files) {
     await uploadFiles(Array.from(event.dataTransfer.files))
   }
 }
 
-async function uploadFiles(files: File[]) {
-  if (!props.issueId) return
+function apiErrorMessage(err: unknown): string {
+  const e = err as { response?: { data?: { error?: string; message?: string } } }
+  return e?.response?.data?.error || e?.response?.data?.message || ''
+}
 
+async function uploadFiles(files: File[]) {
+  if (!props.issueId || props.readOnly) return
+
+  const queue: File[] = []
   for (const file of files) {
+    if (file.size > maxAttachmentBytes) {
+      toast.error(t('attachment.oversize', { name: file.name }))
+      continue
+    }
+    queue.push(file)
     uploadingFiles.value.push(file)
   }
 
   try {
-    for (const file of files) {
+    for (const file of queue) {
       const attachment = await attachmentApi.uploadAttachment(props.issueId!, file)
       attachments.value.unshift(attachment)
+      emitCount()
     }
   } catch (error) {
     console.error('Failed to upload file:', error)
+    const msg = apiErrorMessage(error)
+    toast.error(msg && (msg.includes('10MB') || msg.toLowerCase().includes('size')) ? msg : (msg || t('attachment.uploadFailed')))
   } finally {
     uploadingFiles.value = []
   }
 }
 
 async function deleteAttachment(attachment: any) {
+  if (props.readOnly) return
   if (!(await confirm(t('attachment.confirmDelete', { name: attachment.name })))) return
   if (!props.issueId) return
 
   try {
     await attachmentApi.deleteAttachment(props.issueId, attachment.id)
     attachments.value = attachments.value.filter(a => a.id !== attachment.id)
+    emitCount()
   } catch (error) {
     console.error('Failed to delete attachment:', error)
+    toast.error(apiErrorMessage(error) || t('attachment.deleteFailed'))
   }
 }
 
@@ -213,4 +256,11 @@ function formatTime(timeStr: string) {
 onMounted(() => {
   loadAttachments()
 })
+
+watch(
+  () => props.issueId,
+  () => {
+    loadAttachments()
+  },
+)
 </script>

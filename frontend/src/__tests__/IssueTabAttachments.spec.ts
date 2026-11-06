@@ -6,6 +6,10 @@ vi.mock('@/composables/useI18n', () => ({
   useI18n: () => ({ t: (k: string) => k }),
 }))
 
+vi.mock('@/composables/usePermission', () => ({
+  useProjectPermissions: () => ({ can: (code: string) => code === 'issue:edit' }),
+}))
+
 vi.mock('@/components/AttachmentManager.vue', () => ({
   default: {
     template: '<div class="mock-attach">Attachments</div>',
