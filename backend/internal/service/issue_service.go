@@ -393,6 +393,17 @@ func (s *IssueService) Create(req *request.IssueCreateRequest, projectID, worksp
 		return nil, common.Internal("Failed to commit transaction")
 	}
 
+	if s.notificationSvc != nil && len(assigneeIDs) > 0 {
+		actor := &userID
+		projectIDPtr := issue.ProjectID
+		issueIDPtr := issue.ID
+		for _, aid := range assigneeIDs {
+			title := fmt.Sprintf("工作项分配: %s", issue.Name)
+			message := fmt.Sprintf("您被分配到工作项 #%d: %s", issue.SequenceID, issue.Name)
+			_ = s.notificationSvc.TriggerNotification(s.db, "issue_assigned", title, message, aid, actor, &projectIDPtr, &issueIDPtr)
+		}
+	}
+
 	// Automation trigger: issue_created (after commit, uses own DB connection)
 	s.NotifyIssueCreated(issue)
 
@@ -781,6 +792,9 @@ func (s *IssueService) Update(issueID uint64, req *request.IssueUpdateRequest, u
 		return nil, common.NotFound("Issue not found")
 	}
 
+	var priorAssigneeIDs []uint64
+	s.db.Model(&model.IssueAssignee{}).Where("issue_id = ?", issueID).Pluck("user_id", &priorAssigneeIDs)
+
 	tx := s.db.Begin()
 
 	// Track changes for activity
@@ -886,6 +900,14 @@ func (s *IssueService) Update(issueID uint64, req *request.IssueUpdateRequest, u
 
 	// Handle assignees
 	if req.AssigneeIDs != nil {
+		oldSet := make(map[uint64]bool, len(priorAssigneeIDs))
+		for _, id := range priorAssigneeIDs {
+			oldSet[id] = true
+		}
+		newSet := make(map[uint64]bool, len(req.AssigneeIDs))
+		for _, aid := range req.AssigneeIDs {
+			newSet[aid] = true
+		}
 		// Remove existing
 		tx.Where("issue_id = ?", issueID).Delete(&model.IssueAssignee{})
 		// Add new
@@ -894,6 +916,19 @@ func (s *IssueService) Update(issueID uint64, req *request.IssueUpdateRequest, u
 		}
 		s.createActivity(tx, issueID, "updated", strPtr("assignees"), nil, nil, nil, &userID)
 		hasChanges = true
+
+		if s.notificationSvc != nil {
+			projPtr := issue.ProjectID
+			issuePtr := issueID
+			for aid := range newSet {
+				if oldSet[aid] {
+					continue
+				}
+				title := fmt.Sprintf("工作项分配: %s", issue.Name)
+				message := fmt.Sprintf("您被分配到工作项 #%d: %s", issue.SequenceID, issue.Name)
+				_ = s.notificationSvc.TriggerNotification(tx, "issue_assigned", title, message, aid, &userID, &projPtr, &issuePtr)
+			}
+		}
 	}
 
 	// Handle labels
@@ -1253,7 +1288,7 @@ func (s *IssueService) AddAssignee(issueID, userID, actorID uint64) error {
 	s.createActivity(s.db, issueID, "updated", strPtr("assignees"), nil, nil, nil, &actorID)
 
 	// Trigger notification for assignment
-	if s.notificationSvc != nil && userID != actorID {
+	if s.notificationSvc != nil {
 		title := fmt.Sprintf("工作项分配: %s", issue.Name)
 		message := fmt.Sprintf("您被分配到工作项 #%d: %s", issue.SequenceID, issue.Name)
 		issueIDPtr := issueID
@@ -2863,40 +2898,86 @@ func (s *IssueService) validateMandatoryCustomFields(workspaceID uint64, issueTy
 func (s *IssueService) AddPage(issueID, pageID, actorID uint64) error {
 	var issue model.Issue
 	if err := s.db.First(&issue, issueID).Error; err != nil {
-		return common.NotFound("Issue not found")
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return common.NotFound("Issue not found")
+		}
+		return common.Internal("Failed to fetch issue")
 	}
 
 	var page model.Page
 	if err := s.db.First(&page, pageID).Error; err != nil {
-		return common.NotFound("Page not found")
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return common.NotFound("Page not found")
+		}
+		return common.Internal("Failed to fetch page")
 	}
 
-	if err := s.db.Model(&issue).Association("Pages").Append(&page); err != nil {
+	if page.ProjectID != issue.ProjectID {
+		return common.Forbidden("Page is not in the same project as the issue")
+	}
+
+	// Idempotent: composite PK on issue_pages yields ON CONFLICT DO NOTHING (PostgreSQL)
+	// and INSERT OR IGNORE semantics on SQLite with AutoMigrate unique constraint.
+	res := s.db.Exec(
+		"INSERT INTO issue_pages (issue_id, page_id) VALUES (?, ?) ON CONFLICT DO NOTHING",
+		issueID, pageID,
+	)
+	if res.Error != nil {
 		return common.Internal("Failed to add page to issue")
 	}
-
 	return nil
 }
 
 func (s *IssueService) RemovePage(issueID, pageID, actorID uint64) error {
 	var issue model.Issue
 	if err := s.db.First(&issue, issueID).Error; err != nil {
-		return common.NotFound("Issue not found")
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return common.NotFound("Issue not found")
+		}
+		return common.Internal("Failed to fetch issue")
 	}
 
-	if err := s.db.Model(&issue).Association("Pages").Delete(&model.Page{BaseModel: model.BaseModel{ID: pageID}}); err != nil {
+	var page model.Page
+	if err := s.db.First(&page, pageID).Error; err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return common.NotFound("Page not found")
+		}
+		return common.Internal("Failed to fetch page")
+	}
+
+	if page.ProjectID != issue.ProjectID {
+		return common.Forbidden("Page is not in the same project as the issue")
+	}
+
+	res := s.db.Exec("DELETE FROM issue_pages WHERE issue_id = ? AND page_id = ?", issueID, pageID)
+	if res.Error != nil {
 		return common.Internal("Failed to remove page from issue")
 	}
-
+	if res.RowsAffected == 0 {
+		return common.NotFound("Link not found")
+	}
 	return nil
 }
 
 func (s *IssueService) ListPages(issueID uint64) ([]model.Page, error) {
 	var issue model.Issue
-	if err := s.db.Preload("Pages").First(&issue, issueID).Error; err != nil {
-		return nil, common.NotFound("Issue not found")
+	if err := s.db.First(&issue, issueID).Error; err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, common.NotFound("Issue not found")
+		}
+		return nil, common.Internal("Failed to fetch issue")
 	}
-	return issue.Pages, nil
+
+	var pages []model.Page
+	if err := s.db.
+		Table("pages").
+		Joins("INNER JOIN issue_pages ON issue_pages.page_id = pages.id").
+		Where("issue_pages.issue_id = ? AND pages.project_id = ?", issueID, issue.ProjectID).
+		Order("pages.title ASC").
+		Find(&pages).Error; err != nil {
+		return nil, common.Internal("Failed to list pages for issue")
+	}
+	return pages, nil
 }
 
 func (s *IssueService) ReorderSubIssues(parentID uint64, issueIDs []uint64) error {
