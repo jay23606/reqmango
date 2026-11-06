@@ -3135,7 +3135,10 @@
     "noMatch": "No matching users"
   },
   "quickCreate": {
-    "placeholder": "Enter title, press Enter to quick create..."
+    "placeholder": "Enter title, press Enter to quick create...",
+    "titleRequired": "Enter a title to create a work item.",
+    "createFailedGeneric": "Could not create. Open the full form to fix required fields.",
+    "fullFormLink": "Full form"
   },
   "cycleBurndown": {
     "title": "Burndown Chart",

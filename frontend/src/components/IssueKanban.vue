@@ -90,7 +90,7 @@
           </div>
         </div>
         <div v-if="canCreateIssue && groupBy === 'state' && quickCreateStateId === column.key" class="mb-3">
-          <QuickCreateInput :project-id="projectId" :workspace-id="workspaceId" :issue-types="issueTypes" :default-state-id="(column.key as number)" :show-priority="false" inline show-cancel @created="onQuickCreated" @cancel="closeQuickCreate" />
+          <QuickCreateInput :project-id="projectId" :workspace-id="workspaceId" :issue-types="issueTypes" :default-type-id="defaultTypeId ?? undefined" :default-state-id="(column.key as number)" :show-priority="false" inline show-cancel @created="onQuickCreated" @cancel="closeQuickCreate" />
         </div>
         <VueDraggable
           v-model="groupedIssues[column.key]"
@@ -236,6 +236,10 @@ const props = defineProps<{ projectId: number; workspaceId: number; projectIdent
 const { can: canInProject } = useProjectPermissions(() => props.projectId)
 const canDeleteIssues = computed(() => canInProject('issue:delete'))
 const canCreateIssue = computed(() => canInProject('issue:create'))
+const defaultTypeId = computed(() => {
+  const d = issueTypes.value.find((t: any) => t.is_default)
+  return d?.id ?? null
+})
 const emit = defineEmits<{ (e: 'select', issue: any): void }>()
 const { t } = useI18n()
 const toast = useToast()

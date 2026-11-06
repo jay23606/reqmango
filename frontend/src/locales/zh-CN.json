@@ -3135,7 +3135,10 @@
     "noMatch": "无匹配用户"
   },
   "quickCreate": {
-    "placeholder": "输入标题，按 Enter 快速创建..."
+    "placeholder": "输入标题，按 Enter 快速创建...",
+    "titleRequired": "请输入标题后再创建。",
+    "createFailedGeneric": "无法创建。请打开完整表单填写必填项。",
+    "fullFormLink": "完整表单"
   },
   "cycleBurndown": {
     "title": "燃尽图",

@@ -67,6 +67,8 @@
       :project-id="projectId"
       :workspace-id="workspaceId"
       :issue-types="issueTypes"
+      :default-type-id="defaultTypeId ?? undefined"
+      :default-state-id="defaultStateId ?? undefined"
       @created="onQuickCreated"
     />
 
@@ -397,6 +399,17 @@ const props = defineProps<{ projectId: number; workspaceId: number; rql?: string
 const { can: canInProject } = useProjectPermissions(() => props.projectId)
 const canDeleteIssues = computed(() => canInProject('issue:delete'))
 const canCreateIssue = computed(() => canInProject('issue:create'))
+const defaultTypeId = computed(() => {
+  const d = issueTypes.value.find((t: any) => t.is_default)
+  return d?.id ?? null
+})
+const defaultStateId = computed(() => {
+  const preferred =
+    states.value.find((s: any) => s.is_default) ||
+    states.value.find((s: any) => s.group === 'unstarted') ||
+    states.value.find((s: any) => s.group === 'backlog')
+  return preferred?.id ?? null
+})
 const router = useRouter()
 const route = useRoute()
 const { t, locale } = useI18n()

@@ -790,8 +790,31 @@ watch(
   { deep: true }
 )
 
+function applyCreateQueryPrefill() {
+  const q = route.query
+  const rawName = q.name
+  if (typeof rawName === 'string' && rawName.trim()) {
+    formData.value.name = rawName.trim()
+  }
+  const rawType = q.type_id
+  if (rawType != null && String(rawType) !== '') {
+    const tid = parseInt(String(rawType), 10)
+    if (!Number.isNaN(tid) && tid > 0 && issueTypes.value.some((t) => t.id === tid)) {
+      selectedTypeId.value = tid
+    }
+  }
+  const rawState = q.state_id
+  if (rawState != null && String(rawState) !== '') {
+    const sid = parseInt(String(rawState), 10)
+    if (!Number.isNaN(sid) && sid > 0 && states.value.some((s) => s.id === sid)) {
+      formData.value.state_id = sid
+    }
+  }
+}
+
 onMounted(async () => {
   await loadData()
+  applyCreateQueryPrefill()
   applyDefaultTemplateForType(selectedTypeId.value)
 })
 
