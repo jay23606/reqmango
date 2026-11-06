@@ -47,24 +47,33 @@ func (s *CommentService) Create(issueID, authorID uint64, body string, parentID 
 
 	// Trigger notification for comment
 	if s.notificationSvc != nil {
+		recipientSet := make(map[uint64]struct{})
 		var assignees []model.IssueAssignee
 		s.db.Where("issue_id = ?", issueID).Find(&assignees)
-		if len(assignees) > 0 {
-			recipientIDs := make([]uint64, 0, len(assignees))
-			for _, a := range assignees {
-				if a.UserID != authorID {
-					recipientIDs = append(recipientIDs, a.UserID)
-				}
+		for _, a := range assignees {
+			if a.UserID != authorID {
+				recipientSet[a.UserID] = struct{}{}
 			}
-			if len(recipientIDs) > 0 {
-				title := fmt.Sprintf("新评论: %s", issue.Name)
-				message := fmt.Sprintf("工作项 #%d 收到新评论", issue.SequenceID)
-				issueIDPtr := issueID
-				projectIDPtr := issue.ProjectID
-				_ = s.notificationSvc.TriggerNotificationsBulk(s.db, "issue_commented", title, message, recipientIDs, &authorID, &projectIDPtr, &issueIDPtr)
-				for _, rid := range recipientIDs {
-					SSE.NotifyUser(rid, "issue_commented", title, message)
-				}
+		}
+		var watchers []model.IssueWatcher
+		s.db.Where("issue_id = ?", issueID).Find(&watchers)
+		for _, w := range watchers {
+			if w.UserID != authorID {
+				recipientSet[w.UserID] = struct{}{}
+			}
+		}
+		if len(recipientSet) > 0 {
+			recipientIDs := make([]uint64, 0, len(recipientSet))
+			for id := range recipientSet {
+				recipientIDs = append(recipientIDs, id)
+			}
+			title := fmt.Sprintf("新评论: %s", issue.Name)
+			message := fmt.Sprintf("工作项 #%d 收到新评论", issue.SequenceID)
+			issueIDPtr := issueID
+			projectIDPtr := issue.ProjectID
+			_ = s.notificationSvc.TriggerNotificationsBulk(s.db, "issue_commented", title, message, recipientIDs, &authorID, &projectIDPtr, &issueIDPtr)
+			for _, rid := range recipientIDs {
+				SSE.NotifyUser(rid, "issue_commented", title, message)
 			}
 		}
 

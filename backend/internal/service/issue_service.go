@@ -801,6 +801,8 @@ func (s *IssueService) Update(issueID uint64, req *request.IssueUpdateRequest, u
 	hasChanges := false
 	var oldStateID uint64         // Store old state ID for automation context
 	oldPriority := issue.Priority // Store old priority for automation context
+	var stateChangeNotify bool
+	var stateChangeOldName, stateChangeNewName string
 
 	if req.Name != nil && *req.Name != issue.Name {
 		oldVal := issue.Name
@@ -850,40 +852,9 @@ func (s *IssueService) Update(issueID uint64, req *request.IssueUpdateRequest, u
 			strPtr(oldState.Name), strPtr(newState.Name), nil, &userID)
 		hasChanges = true
 
-		if s.notificationSvc != nil {
-
-			recipientIDs := make(map[uint64]bool)
-
-			var assignees []model.IssueAssignee
-			s.db.Where("issue_id = ?", issueID).Find(&assignees)
-			for _, a := range assignees {
-				if a.UserID != userID {
-					recipientIDs[a.UserID] = true
-				}
-			}
-
-			var watchers []model.IssueWatcher
-			s.db.Where("issue_id = ?", issueID).Find(&watchers)
-			for _, w := range watchers {
-				if w.UserID != userID {
-					recipientIDs[w.UserID] = true
-				}
-			}
-
-			s.addProjectLeadAndSubscribers(issue.ProjectID, userID, recipientIDs)
-
-			if len(recipientIDs) > 0 {
-				ids := make([]uint64, 0, len(recipientIDs))
-				for id := range recipientIDs {
-					ids = append(ids, id)
-				}
-				title := fmt.Sprintf("状态变更: %s", issue.Name)
-				message := fmt.Sprintf("工作项 #%d 状态从 %s 变为 %s", issue.SequenceID, oldState.Name, newState.Name)
-				issueIDPtr := issueID
-				projectIDPtr := issue.ProjectID
-				_ = s.notificationSvc.TriggerNotificationsBulk(tx, "issue_state_changed", title, message, ids, &userID, &projectIDPtr, &issueIDPtr)
-			}
-		}
+		stateChangeNotify = true
+		stateChangeOldName = oldState.Name
+		stateChangeNewName = newState.Name
 	}
 	if req.SortOrder != nil && *req.SortOrder != issue.SortOrder {
 		issue.SortOrder = *req.SortOrder
@@ -928,6 +899,36 @@ func (s *IssueService) Update(issueID uint64, req *request.IssueUpdateRequest, u
 				message := fmt.Sprintf("您被分配到工作项 #%d: %s", issue.SequenceID, issue.Name)
 				_ = s.notificationSvc.TriggerNotification(tx, "issue_assigned", title, message, aid, &userID, &projPtr, &issuePtr)
 			}
+		}
+	}
+
+	if stateChangeNotify && s.notificationSvc != nil {
+		recipientIDs := make(map[uint64]bool)
+		var assignees []model.IssueAssignee
+		tx.Where("issue_id = ?", issueID).Find(&assignees)
+		for _, a := range assignees {
+			if a.UserID != userID {
+				recipientIDs[a.UserID] = true
+			}
+		}
+		var watchers []model.IssueWatcher
+		tx.Where("issue_id = ?", issueID).Find(&watchers)
+		for _, w := range watchers {
+			if w.UserID != userID {
+				recipientIDs[w.UserID] = true
+			}
+		}
+		s.addProjectLeadAndSubscribers(issue.ProjectID, userID, recipientIDs)
+		if len(recipientIDs) > 0 {
+			ids := make([]uint64, 0, len(recipientIDs))
+			for id := range recipientIDs {
+				ids = append(ids, id)
+			}
+			title := fmt.Sprintf("状态变更: %s", issue.Name)
+			message := fmt.Sprintf("工作项 #%d 状态从 %s 变为 %s", issue.SequenceID, stateChangeOldName, stateChangeNewName)
+			issueIDPtr := issueID
+			projectIDPtr := issue.ProjectID
+			_ = s.notificationSvc.TriggerNotificationsBulk(tx, "issue_state_changed", title, message, ids, &userID, &projectIDPtr, &issueIDPtr)
 		}
 	}
 

@@ -98,7 +98,7 @@ func (s *ApprovalService) Create(issueID, requesterID, transitionID uint64, requ
 
 	// 7. Notify approvers (best-effort)
 	if s.notifier != nil {
-		approverIDs := parseUint64Array(approverIDsJSON)
+		approverIDs := filterRecipientsForSender(parseUint64Array(approverIDsJSON), &approval.RequesterID)
 		if len(approverIDs) > 0 {
 			title := "Approval request"
 			message := fmt.Sprintf("Issue #%d requires your approval", issueID)

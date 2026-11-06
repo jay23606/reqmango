@@ -200,6 +200,9 @@ func notificationToResponse(n *model.Notification) response.NotificationResponse
 // TriggerNotification creates a notification for a specific event.
 // This is used internally to auto-trigger notifications on business events.
 func (s *NotificationService) TriggerNotification(db *gorm.DB, event, title, message string, recipientID uint64, senderID, projectID, issueID *uint64) error {
+	if skipSelfNotify(recipientID, senderID) {
+		return nil
+	}
 	nType := "info"
 	priority := "medium"
 
@@ -236,6 +239,10 @@ func (s *NotificationService) TriggerNotification(db *gorm.DB, event, title, mes
 
 // TriggerNotificationsBulk creates notifications for multiple recipients.
 func (s *NotificationService) TriggerNotificationsBulk(db *gorm.DB, event, title, message string, recipientIDs []uint64, senderID, projectID, issueID *uint64) error {
+	recipientIDs = filterRecipientsForSender(recipientIDs, senderID)
+	if len(recipientIDs) == 0 {
+		return nil
+	}
 	nType := "info"
 	priority := "medium"
 
