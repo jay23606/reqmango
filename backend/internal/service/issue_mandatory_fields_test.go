@@ -30,6 +30,22 @@ func ensureDefaultIssueState(t *testing.T, db *gorm.DB, projectID uint64) {
 	require.Greater(t, res.RowsAffected, int64(0), "expected a Backlog state for the project")
 }
 
+// seedIssueForMandatoryCFTests creates an issue with the given type (Backlog state from seedTestData).
+func seedIssueForMandatoryCFTests(t *testing.T, db *gorm.DB, projectID, workspaceID, typeID uint64) *model.Issue {
+	t.Helper()
+	var st model.State
+	require.NoError(t, db.Where("project_id = ? AND name = ?", projectID, "Backlog").First(&st).Error)
+	issue := &model.Issue{
+		Name:        "mandatory cf test issue",
+		ProjectID:   projectID,
+		WorkspaceID: workspaceID,
+		StateID:     st.ID,
+		IssueTypeID: &typeID,
+	}
+	require.NoError(t, db.Create(issue).Error)
+	return issue
+}
+
 func TestCreate_RejectsMissingRequiredCustomField(t *testing.T) {
 	db := setupTestDB(t)
 	require.NoError(t, db.AutoMigrate(
@@ -142,4 +158,151 @@ func TestCreate_WithRequiredCustomFieldValue_Succeeds(t *testing.T) {
 	var n int64
 	require.NoError(t, db.Model(&model.Issue{}).Where("project_id = ? AND id = ?", projID, issue.ID).Count(&n).Error)
 	require.Equal(t, int64(1), n)
+}
+
+func TestSetIssueValue_RejectsEmptyRequired(t *testing.T) {
+	db := setupTestDB(t)
+	require.NoError(t, db.AutoMigrate(
+		&model.CustomField{},
+		&model.IssueTypeField{},
+		&model.IssueTypeImport{},
+		&model.IssueCustomFieldValue{},
+		&model.IssueActivity{},
+		&model.IssueAssignee{},
+		&model.IssueLabel{},
+		&model.Label{},
+		&model.IssueCycle{},
+		&model.Cycle{},
+		&model.ModuleIssue{},
+		&model.Module{},
+		&model.Webhook{},
+	))
+	wsID, projID, _ := seedTestData(t, db)
+
+	bugType := &model.IssueType{Name: "Bug", WorkspaceID: wsID}
+	require.NoError(t, db.Create(bugType).Error)
+	fieldName := "复现步骤"
+	fieldID := seedRequiredCF(t, db, wsID, bugType.ID, fieldName)
+
+	issue := seedIssueForMandatoryCFTests(t, db, projID, wsID, bugType.ID)
+	existing := "steps to reproduce"
+	require.NoError(t, db.Create(&model.IssueCustomFieldValue{
+		IssueID: issue.ID,
+		FieldID: fieldID,
+		Value:   existing,
+	}).Error)
+
+	svc := NewCustomFieldService(db)
+	_, err := svc.SetIssueValue(issue.ID, request.IssueCustomFieldValueCreate{
+		FieldID: fieldID,
+		Value:   "",
+	})
+	require.Error(t, err)
+	appErr, ok := err.(*common.AppError)
+	require.True(t, ok, "want *common.AppError, got %T: %v", err, err)
+	require.Equal(t, common.ErrBadRequest, appErr.ErrorCode)
+	require.Contains(t, appErr.Message, "缺少必填字段")
+	require.Contains(t, appErr.Message, fieldName)
+
+	var stored model.IssueCustomFieldValue
+	require.NoError(t, db.Where("issue_id = ? AND field_id = ?", issue.ID, fieldID).First(&stored).Error)
+	require.Equal(t, existing, stored.Value)
+}
+
+func TestDeleteIssueValue_RejectsRequired(t *testing.T) {
+	db := setupTestDB(t)
+	require.NoError(t, db.AutoMigrate(
+		&model.CustomField{},
+		&model.IssueTypeField{},
+		&model.IssueTypeImport{},
+		&model.IssueCustomFieldValue{},
+		&model.IssueActivity{},
+		&model.IssueAssignee{},
+		&model.IssueLabel{},
+		&model.Label{},
+		&model.IssueCycle{},
+		&model.Cycle{},
+		&model.ModuleIssue{},
+		&model.Module{},
+		&model.Webhook{},
+	))
+	wsID, projID, _ := seedTestData(t, db)
+
+	bugType := &model.IssueType{Name: "Bug", WorkspaceID: wsID}
+	require.NoError(t, db.Create(bugType).Error)
+	fieldName := "复现步骤"
+	fieldID := seedRequiredCF(t, db, wsID, bugType.ID, fieldName)
+
+	issue := seedIssueForMandatoryCFTests(t, db, projID, wsID, bugType.ID)
+	existing := "has value"
+	require.NoError(t, db.Create(&model.IssueCustomFieldValue{
+		IssueID: issue.ID,
+		FieldID: fieldID,
+		Value:   existing,
+	}).Error)
+
+	svc := NewCustomFieldService(db)
+	err := svc.DeleteIssueValue(issue.ID, fieldID)
+	require.Error(t, err)
+	appErr, ok := err.(*common.AppError)
+	require.True(t, ok, "want *common.AppError, got %T: %v", err, err)
+	require.Equal(t, common.ErrBadRequest, appErr.ErrorCode)
+	require.Contains(t, appErr.Message, "缺少必填字段")
+	require.Contains(t, appErr.Message, fieldName)
+
+	var n int64
+	require.NoError(t, db.Model(&model.IssueCustomFieldValue{}).
+		Where("issue_id = ? AND field_id = ?", issue.ID, fieldID).Count(&n).Error)
+	require.Equal(t, int64(1), n)
+}
+
+func TestBulkSetIssueValues_RejectsEmptyRequired(t *testing.T) {
+	db := setupTestDB(t)
+	require.NoError(t, db.AutoMigrate(
+		&model.CustomField{},
+		&model.IssueTypeField{},
+		&model.IssueTypeImport{},
+		&model.IssueCustomFieldValue{},
+		&model.IssueActivity{},
+		&model.IssueAssignee{},
+		&model.IssueLabel{},
+		&model.Label{},
+		&model.IssueCycle{},
+		&model.Cycle{},
+		&model.ModuleIssue{},
+		&model.Module{},
+		&model.Webhook{},
+	))
+	wsID, projID, _ := seedTestData(t, db)
+
+	bugType := &model.IssueType{Name: "Bug", WorkspaceID: wsID}
+	require.NoError(t, db.Create(bugType).Error)
+	fieldName := "复现步骤"
+	fieldID := seedRequiredCF(t, db, wsID, bugType.ID, fieldName)
+
+	issue := seedIssueForMandatoryCFTests(t, db, projID, wsID, bugType.ID)
+	existing := "bulk keep"
+	require.NoError(t, db.Create(&model.IssueCustomFieldValue{
+		IssueID: issue.ID,
+		FieldID: fieldID,
+		Value:   existing,
+	}).Error)
+
+	svc := NewCustomFieldService(db)
+	_, err := svc.BulkSetIssueValues(request.BulkCustomFieldValueUpdate{
+		IssueID: issue.ID,
+		Values: []request.IssueCustomFieldValueUpdateItem{
+			{FieldID: fieldID, Value: ""},
+		},
+	})
+	require.Error(t, err)
+	appErr, ok := err.(*common.AppError)
+	require.True(t, ok, "want *common.AppError, got %T: %v", err, err)
+	require.Equal(t, common.ErrBadRequest, appErr.ErrorCode)
+	require.Contains(t, appErr.Message, "缺少必填字段")
+	require.Contains(t, appErr.Message, fieldName)
+
+	var stored model.IssueCustomFieldValue
+	require.NoError(t, db.Where("issue_id = ? AND field_id = ?", issue.ID, fieldID).First(&stored).Error)
+	require.Equal(t, existing, stored.Value)
 }
