@@ -111,6 +111,9 @@ func (s *IssueTypeService) Create(workspaceID, userID uint64, req request.IssueT
 		ProjectID:    req.ProjectID,
 		WorkspaceID:  workspaceID,
 	}
+	if req.AllowedChildTypeIDs != nil {
+		t.AllowedChildTypeIDs = req.AllowedChildTypeIDs
+	}
 	t.CreatedByID = &userID
 
 	if err := s.db.Create(&t).Error; err != nil {

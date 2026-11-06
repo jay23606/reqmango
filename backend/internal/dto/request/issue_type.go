@@ -2,15 +2,16 @@ package request
 
 // IssueTypeCreate request for creating a new issue type.
 type IssueTypeCreate struct {
-	Name         string  `json:"name" binding:"required"`
-	Color        string  `json:"color"`
-	Icon         string  `json:"icon"`
-	Description  string  `json:"description"`
-	Level        int     `json:"level"`          // hierarchy level 0-5
-	ParentTypeID *uint64 `json:"parent_type_id"` // parent type in hierarchy
-	IsDefault    bool    `json:"is_default"`
-	Sequence     int     `json:"sequence"`
-	ProjectID    *uint64 `json:"project_id"` // nil = workspace-shared
+	Name                string   `json:"name" binding:"required"`
+	Color               string   `json:"color"`
+	Icon                string   `json:"icon"`
+	Description         string   `json:"description"`
+	Level               int      `json:"level"`          // hierarchy level 0-5
+	ParentTypeID        *uint64  `json:"parent_type_id"` // parent type in hierarchy
+	AllowedChildTypeIDs []uint64 `json:"allowed_child_type_ids"`
+	IsDefault           bool     `json:"is_default"`
+	Sequence            int      `json:"sequence"`
+	ProjectID           *uint64  `json:"project_id"` // nil = workspace-shared
 }
 
 // IssueTypeUpdate request for updating an issue type.
