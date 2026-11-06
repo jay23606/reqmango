@@ -180,6 +180,59 @@ func TestCreate_OmittedTypeID_UsesDefaultForMandatoryCFCheck(t *testing.T) {
 	require.Zero(t, cfCount)
 }
 
+func TestCreate_ChildWithOmittedTypeID_SucceedsWithoutHierarchyDefault(t *testing.T) {
+	db := setupTestDB(t)
+	require.NoError(t, db.AutoMigrate(
+		&model.CustomField{},
+		&model.ConditionalField{},
+		&model.IssueTypeField{},
+		&model.IssueTypeImport{},
+		&model.IssueCustomFieldValue{},
+		&model.IssueActivity{},
+		&model.IssueAssignee{},
+		&model.IssueLabel{},
+		&model.Label{},
+		&model.IssueCycle{},
+		&model.Cycle{},
+		&model.ModuleIssue{},
+		&model.Module{},
+		&model.Webhook{},
+		&model.IssueType{},
+	))
+	wsID, projID, userID := seedTestData(t, db)
+	ensureDefaultIssueState(t, db, projID)
+
+	var taskType model.IssueType
+	require.NoError(t, db.Where("workspace_id = ? AND name = ?", wsID, "Task").First(&taskType).Error)
+	require.NoError(t, db.Model(&taskType).Update("is_default", false).Error)
+
+	defaultBug := &model.IssueType{Name: "Bug", WorkspaceID: wsID, IsDefault: true}
+	require.NoError(t, db.Create(defaultBug).Error)
+	require.NoError(t, db.Create(&model.IssueTypeImport{
+		ProjectID: projID, WorkspaceTypeID: defaultBug.ID, WorkspaceID: wsID,
+	}).Error)
+
+	svc := NewIssueService(db, nil, NewWebhookService(db), nil, nil)
+
+	parent, err := svc.Create(&request.IssueCreateRequest{
+		Name:   "parent with default bug type",
+		TypeID: &defaultBug.ID,
+	}, projID, wsID, userID)
+	require.NoError(t, err)
+	require.NotNil(t, parent)
+
+	child, err := svc.Create(&request.IssueCreateRequest{
+		Name:     "sub-issue no type",
+		ParentID: &parent.ID,
+	}, projID, wsID, userID)
+	require.NoError(t, err, "child with ParentID and omitted type_id must not fail hierarchy (no implicit root default type)")
+	require.NotNil(t, child)
+
+	var stored model.Issue
+	require.NoError(t, db.First(&stored, child.ID).Error)
+	require.Nil(t, stored.IssueTypeID, "omitted type on sub-issue should persist as NULL")
+}
+
 func seedRequiredCF(t *testing.T, db *gorm.DB, wsID, typeID uint64, name string) uint64 {
 	t.Helper()
 	f := &model.CustomField{Name: name, FieldType: "text", WorkspaceID: wsID}

@@ -95,15 +95,12 @@ func (s *IssueService) validateTypeVisibleInProject(typeID, projectID, workspace
 	return common.BadRequest("This issue type has not been imported into the project")
 }
 
-// resolveProjectDefaultIssueTypeID picks the type the UI would pre-select for quick-create:
-// the visible type with is_default, or the first visible type (ordered like the type picker).
+// resolveProjectDefaultIssueTypeID picks the workspace default type marked is_default in the
+// visible set — matching Project.vue defaultTypeId (no fallback to "first visible").
 func (s *IssueService) resolveProjectDefaultIssueTypeID(projectID, workspaceID uint64) (*uint64, error) {
 	visible, err := issuetype.Visible(s.db, workspaceID, &projectID)
 	if err != nil {
 		return nil, common.Internal("Failed to resolve issue types")
-	}
-	if len(visible) == 0 {
-		return nil, nil
 	}
 	for i := range visible {
 		if visible[i].IsDefault {
@@ -111,8 +108,7 @@ func (s *IssueService) resolveProjectDefaultIssueTypeID(projectID, workspaceID u
 			return &id, nil
 		}
 	}
-	id := visible[0].ID
-	return &id, nil
+	return nil, nil
 }
 
 // nextIssueSequence holds the project lock until the caller's transaction ends.
@@ -145,16 +141,32 @@ func (s *IssueService) Create(req *request.IssueCreateRequest, projectID, worksp
 		}
 	}
 
-	var resolvedTypeID *uint64
-	if explicitTypeID {
-		tid := *req.TypeID
-		resolvedTypeID = &tid
-	} else {
+	hasParent := req.ParentID != nil && *req.ParentID > 0
+
+	// UI default (is_default only) is used for top-level quick-create when type is omitted:
+	// mandatory custom-field checks and persisted IssueTypeID. It must not be applied to
+	// hierarchy validation or to sub-issues with omitted type (nil type inherits no root-type rules).
+	var projectDefaultTypeID *uint64
+	if !explicitTypeID {
 		var err error
-		resolvedTypeID, err = s.resolveProjectDefaultIssueTypeID(projectID, workspaceID)
+		projectDefaultTypeID, err = s.resolveProjectDefaultIssueTypeID(projectID, workspaceID)
 		if err != nil {
 			return nil, err
 		}
+	}
+
+	var persistedTypeID *uint64
+	var mandatoryTypeID *uint64
+	if explicitTypeID {
+		tid := *req.TypeID
+		persistedTypeID = &tid
+		mandatoryTypeID = &tid
+	} else if !hasParent {
+		persistedTypeID = projectDefaultTypeID
+		mandatoryTypeID = projectDefaultTypeID
+	} else {
+		persistedTypeID = nil
+		mandatoryTypeID = nil
 	}
 
 	// Get default state if not specified
@@ -196,7 +208,7 @@ func (s *IssueService) Create(req *request.IssueCreateRequest, projectID, worksp
 		ExternalID:          req.ExternalID,
 		ExternalSource:      req.ExternalSource,
 		CoverImageURL:       req.CoverImageURL,
-		IssueTypeID:         resolvedTypeID,
+		IssueTypeID:         persistedTypeID,
 	}
 	issue.CreatedByID = &userID
 	issue.UpdatedByID = &userID
@@ -217,10 +229,10 @@ func (s *IssueService) Create(req *request.IssueCreateRequest, projectID, worksp
 			return nil, common.BadRequest("Maximum hierarchy depth (6 levels) exceeded")
 		}
 		issue.Depth = parent.Depth + 1
-		// Validate type hierarchy
-		if resolvedTypeID != nil && *resolvedTypeID > 0 {
+		// Validate type hierarchy (only when the client sent an explicit type)
+		if explicitTypeID {
 			var childType model.IssueType
-			if s.db.First(&childType, *resolvedTypeID).Error == nil {
+			if s.db.First(&childType, *req.TypeID).Error == nil {
 				// Root type check: types without parent_type_id and level 0 cannot have parents
 				if childType.ParentTypeID == nil && childType.Level == 0 {
 					return nil, common.BadRequest("Invalid hierarchy: root-level type cannot have a parent")
@@ -301,8 +313,8 @@ func (s *IssueService) Create(req *request.IssueCreateRequest, projectID, worksp
 	// Validate mandatory custom fields (only fields visible under the resolved context)
 	var createTypeID uint64
 	var createTypePtr *uint64
-	if resolvedTypeID != nil {
-		createTypeID = *resolvedTypeID
+	if mandatoryTypeID != nil {
+		createTypeID = *mandatoryTypeID
 		if createTypeID > 0 {
 			createTypePtr = &createTypeID
 		}
