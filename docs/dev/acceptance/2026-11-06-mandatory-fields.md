@@ -27,10 +27,10 @@
 |-------|----------|--------|------|----------|
 | AC-02.1 | 创建缺必填拒绝 | P0 | **已通过（自动化）** | `internal/service/issue_mandatory_fields_test.go`：`TestCreate_RejectsMissingRequiredCustomField`（缺失 / 空字符串 → 4xx 文案含字段名，且无落库） |
 | AC-02.2 | 创建含必填成功 | P0 | **已通过（自动化）** | `TestCreate_WithRequiredCustomFieldValue_Succeeds` |
-| AC-03.1 | 更新清空必填拒绝 | P0 | **已通过（自动化，服务层）** | `TestSetIssue_RejectsEmptyRequired`、`TestDeleteIssueValue_RejectsRequired`、`TestBulkSetIssueValues_RejectsEmptyRequired`（清空 / 删除 / 批量设空 → 拒绝且原值保留） |
+| AC-03.1 | 更新清空必填拒绝 | P0 | **已通过（自动化，服务层）** | `TestSetIssueValue_RejectsEmptyRequired`、`TestDeleteIssueValue_RejectsRequired`、`TestBulkSetIssueValues_RejectsEmptyRequired`（清空 / 删除 / 批量设空 → 拒绝且原值保留） |
 | AC-04.1 | 转换类型缺必填拒绝 | P0 | **已通过（自动化）** | `TestConvertType_RejectsWhenTargetRequiresMissingCF`（类型未变更） |
 | AC-04.2 | 正式导入缺必填不落脏数据 | P0 | **待验证（需 Postgres）** | 用例 `TestImportFormalWriteRejectsMissingMandatoryCustomField` 等 **需 `TEST_DATABASE_URL`**；默认 CI/本地未配则 **Skip**。另见上文「无 CF 列映射」限制。 |
-| AC-05.1 | 创建页必填 UI | P0 | **待人工** | 可选：曾启动全量 `vitest run`，因 PowerShell 将子进程 stderr 记为错误且运行未完整收敛，**未采纳为 AC-05.1 证据**；需浏览器或针对性组件/ E2E 验证创建页 `*` 与提交前提示（SRS AC-05.1）。 |
+| AC-05.1 | 创建页必填 UI | P0 | **待人工（创建页）** | 创建页 `IssueCreate` 仍以人工/浏览器核对 `*` 与提交前拦截为准。详情侧栏已有自动化：`IssuePropertySidebar.spec.ts` + `issue-custom-field-empty.test.ts`（`npm test -- --run …` → 13 passed）。 |
 
 ## 小结
 
