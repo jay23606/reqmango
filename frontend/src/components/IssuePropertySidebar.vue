@@ -206,17 +206,17 @@
       </div>
 
       <!-- Custom fields -->
-      <template v-if="customFields.length">
+      <template v-if="visibleCustomFields.length">
         <p class="pt-2 pb-1 text-[10px] font-semibold text-gray-400 uppercase tracking-wide border-t border-gray-100 mt-1">{{ t('issue.customFields') }}</p>
         <div
-          v-for="cf in customFields"
+          v-for="cf in visibleCustomFields"
           :key="cf.field.id"
           class="prop-row"
           :class="{ 'pointer-events-none opacity-60': isLocked && cf.field.field_type !== 'boolean' }"
         >
           <label class="prop-label">
             {{ cf.field.name }}
-            <span v-if="cf.field.is_required" class="text-red-500">*</span>
+            <span v-if="isFieldRequiredVisible(cf)" class="text-red-500">*</span>
           </label>
           <div class="prop-control">
             <input
@@ -319,6 +319,8 @@ const props = defineProps<{
   releases: Array<{ id: number; name: string; version: string }>
   customFields: CustomFieldEntry[]
   workspaceId: number
+  /** When non-null, only these custom field IDs are shown (from conditional-field evaluate). */
+  visibleFieldIds?: Set<number> | null
   agentDispatching?: boolean
   autoTriagePending?: boolean
   agentAssigning?: boolean
@@ -333,6 +335,20 @@ const props = defineProps<{
 }>()
 
 const isLocked = computed(() => props.issue?.approval_status === 'pending')
+
+const visibleCustomFields = computed(() => {
+  const set = props.visibleFieldIds
+  if (set === undefined || set === null) return props.customFields || []
+  return (props.customFields || []).filter((cf) => set.has(cf.field.id))
+})
+
+function isFieldRequiredVisible(cf: CustomFieldEntry): boolean {
+  if (!cf.field.is_required) return false
+  const set = props.visibleFieldIds
+  if (set === undefined || set === null) return true
+  return set.has(cf.field.id)
+}
+
 const visibleStates = computed(() =>
   (props.states || []).filter((s: any) => {
     if (s?.is_active === false) return false
@@ -444,7 +460,11 @@ function memberSelectValue(raw: string | null): string | number {
 }
 
 function attemptCustomFieldUpdate(cf: CustomFieldEntry, value: string) {
-  if (cf.field.is_required && isEmptyIssueCustomFieldValue(cf.field.field_type, value)) {
+  const set = props.visibleFieldIds
+  if (set !== undefined && set !== null && !set.has(cf.field.id)) {
+    return
+  }
+  if (isFieldRequiredVisible(cf) && isEmptyIssueCustomFieldValue(cf.field.field_type, value)) {
     toast.warning(t('issue.requiredFieldsMsg', { fields: cf.field.name }))
     return
   }

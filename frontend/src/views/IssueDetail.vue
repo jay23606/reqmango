@@ -129,6 +129,7 @@
           :modules
           :releases
           :custom-fields="customFieldEntries"
+          :visible-field-ids="sidebarVisibleFieldIds"
           :workspace-id="workspaceId"
           :agent-dispatching="agentDispatching"
           :auto-triage-pending="autoTriagePending"
@@ -204,6 +205,8 @@ import ApprovalDecisionDialog from '@/components/ApprovalDecisionDialog.vue'
 import ApprovalPendingBanner from '@/components/ApprovalPendingBanner.vue'
 import AICopilot from '@/components/AICopilot.vue'
 import approvalApi, { type ApprovalResponse } from '@/api/approval'
+import type { FieldVisibilityEvaluateRequest } from '@/api/conditional-field'
+import { useCustomFieldVisibility } from '@/composables/useCustomFieldVisibility'
 // Route params
 const route = useRoute()
 const router = useRouter()
@@ -228,6 +231,7 @@ const issueTypes = ref<any[]>([])
 const activeTab = ref('details')
 const isWatching = ref(false)
 const customFieldEntries = ref<Array<{ field: any; value: string | null }>>([])
+const { visibleFieldIds: sidebarVisibleFieldIds, scheduleEvaluate, evaluateNow } = useCustomFieldVisibility(workspaceId)
 const relationsTabRef = ref<InstanceType<typeof IssueTabRelations> | null>(null)
 const agentDispatching = ref(false)
 const commentsRefreshKey = ref(0)
@@ -470,6 +474,42 @@ async function loadProjectMembers() {
   }
 }
 
+function issueLabelIdsForVisibility(): number[] {
+  const i = issue.value
+  if (!i) return []
+  if (Array.isArray(i.label_ids) && i.label_ids.length) {
+    return i.label_ids.map((x: any) => Number(x)).filter((n: number) => n > 0)
+  }
+  if (Array.isArray(i.labels) && i.labels.length && typeof i.labels[0] === 'number') {
+    return (i.labels as number[]).filter((n) => n > 0)
+  }
+  if (Array.isArray(i.label_details) && i.label_details.length) {
+    return i.label_details.map((l: { id: number }) => l.id).filter((id: number) => id > 0)
+  }
+  return []
+}
+
+function buildSidebarVisibilityBody(): FieldVisibilityEvaluateRequest | null {
+  if (!workspaceId.value || !issue.value) return null
+  const sid = Number(issue.value.state_id)
+  if (!sid || sid <= 0) return null
+  const typeId = issue.value.issue_type?.id ?? issue.value.issue_type_id ?? issue.value.type_id
+  const pri = String(issue.value.priority ?? 'none').trim().toLowerCase() || 'none'
+  let assignee_ids: number[] = []
+  if (Array.isArray(issue.value.assignee_ids) && issue.value.assignee_ids.length > 0) {
+    assignee_ids = issue.value.assignee_ids.map((x: any) => Number(x)).filter((n: number) => n > 0)
+  } else if (issue.value.assignees?.[0]?.id) {
+    assignee_ids = [Number(issue.value.assignees[0].id)]
+  }
+  return {
+    issue_type_id: typeId ? Number(typeId) : undefined,
+    state_id: sid,
+    priority: pri,
+    assignee_ids,
+    label_ids: issueLabelIdsForVisibility(),
+  }
+}
+
 async function loadCustomFields() {
   try {
     const response = await getIssueCustomFieldsWithDefinitions(issueId)
@@ -487,6 +527,7 @@ async function loadCustomFields() {
     } else {
       customFieldEntries.value = []
     }
+    await evaluateNow(buildSidebarVisibilityBody)
   } catch (error) {
     console.error('Failed to load custom fields:', error)
   }
@@ -499,6 +540,24 @@ watch(
     if (next === prev || prev === undefined) return
     loadCustomFields()
   },
+)
+
+watch(
+  () => [
+    issue.value?.state_id,
+    issue.value?.priority,
+    issue.value?.assignee_ids,
+    issue.value?.assignees,
+    issue.value?.label_ids,
+    issue.value?.labels,
+    issue.value?.issue_type?.id,
+    issue.value?.issue_type_id,
+    workspaceId.value,
+  ],
+  () => {
+    scheduleEvaluate(buildSidebarVisibilityBody)
+  },
+  { deep: true }
 )
 
 async function loadLabels() {

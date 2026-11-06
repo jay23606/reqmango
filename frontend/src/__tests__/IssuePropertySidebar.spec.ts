@@ -170,4 +170,50 @@ describe('IssuePropertySidebar', () => {
     expect(wrapper.emitted('update:customField')).toBeUndefined()
   })
 
+  it('does not render custom fields excluded by visibleFieldIds', () => {
+    const wrapper = mount(IssuePropertySidebar, {
+      ...mountOptions,
+      props: {
+        ...mountOptions.props,
+        visibleFieldIds: new Set([10]),
+        customFields: [
+          {
+            field: { id: 9, name: 'HiddenCF', field_type: 'text', is_required: true },
+            value: 'x',
+          },
+          {
+            field: { id: 10, name: 'ShownCF', field_type: 'text', is_required: false },
+            value: 'y',
+          },
+        ],
+      },
+    })
+    expect(wrapper.text()).toContain('ShownCF')
+    expect(wrapper.text()).not.toContain('HiddenCF')
+  })
+
+  it('shows required marker only for visible fields', () => {
+    const wrapper = mount(IssuePropertySidebar, {
+      ...mountOptions,
+      props: {
+        ...mountOptions.props,
+        visibleFieldIds: new Set([10]),
+        customFields: [
+          {
+            field: { id: 9, name: 'HiddenReq', field_type: 'text', is_required: true },
+            value: '',
+          },
+          {
+            field: { id: 10, name: 'VisibleReq', field_type: 'text', is_required: true },
+            value: 'ok',
+          },
+        ],
+      },
+    })
+    const labels = wrapper.findAll('label.prop-label')
+    const visible = labels.find((l) => l.text().includes('VisibleReq'))
+    expect(visible?.text()).toContain('*')
+    expect(wrapper.text()).not.toContain('HiddenReq')
+  })
+
 })

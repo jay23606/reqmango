@@ -95,10 +95,10 @@
         </div>
 
         <!-- 自定义字段 -->
-        <div v-if="linkedFields.length > 0" class="form-group">
+        <div v-if="visibleLinkedFields.length > 0" class="form-group">
           <label class="form-label">{{ t('issue.customFields') }}</label>
           <div class="custom-fields">
-            <div v-for="field in linkedFields" :key="field.field_id" class="field-item">
+            <div v-for="field in visibleLinkedFields" :key="field.field_id" class="field-item">
               <label class="field-label">
                 {{ field.name }}
                 <span v-if="isFieldRequired(field)" class="required">*</span>
@@ -240,6 +240,8 @@ import * as moduleApi from '@/api/module'
 import { releaseApi } from '@/api/release'
 import projectApi from '@/api/project'
 import { workspaceApi } from '@/api/workspace'
+import type { FieldVisibilityEvaluateRequest } from '@/api/conditional-field'
+import { useCustomFieldVisibility } from '@/composables/useCustomFieldVisibility'
 
 import * as workItemTemplateApi from '@/api/work-item-template'
 import type { WorkItemTemplate } from '@/types/work-item-template'
@@ -272,6 +274,7 @@ const emit = defineEmits<{
 // 状态
 const issueTypes = ref<IssueType[]>([])
 const linkedFields = ref<any[]>([])
+const { visibleFieldIds, scheduleEvaluate, evaluateNow } = useCustomFieldVisibility(workspaceId)
 const states = ref<State[]>([])
 const cycles = ref<CycleResponse[]>([])
 const modules = ref<ModuleResponse[]>([])
@@ -340,6 +343,43 @@ onBeforeUnmount(() => {
   if (duplicateTimer) clearTimeout(duplicateTimer)
 })
 
+function buildVisibilityEvaluateBody(): FieldVisibilityEvaluateRequest | null {
+  if (!workspaceId.value) return null
+  const stateRaw = formData.value.state_id
+  const stateNum = typeof stateRaw === 'string' ? parseInt(stateRaw, 10) : Number(stateRaw)
+  if (!stateNum || stateNum <= 0) return null
+  const priRaw = formData.value.priority
+  const priority =
+    priRaw !== '' && priRaw !== null && priRaw !== undefined
+      ? String(priRaw).trim().toLowerCase()
+      : 'none'
+  const assigneeRaw = formData.value.assignee_id
+  const assigneeNum =
+    assigneeRaw === '' || assigneeRaw === null
+      ? 0
+      : typeof assigneeRaw === 'string'
+        ? parseInt(assigneeRaw, 10)
+        : assigneeRaw
+  const assignee_ids = assigneeNum > 0 ? [assigneeNum] : []
+  return {
+    issue_type_id: selectedTypeId.value ?? undefined,
+    state_id: stateNum,
+    priority,
+    assignee_ids,
+    label_ids: [...selectedLabelIds.value],
+  }
+}
+
+function isCustomFieldVisible(field: any): boolean {
+  const set = visibleFieldIds.value
+  if (!set) return true
+  return set.has(field.field_id)
+}
+
+const visibleLinkedFields = computed(() =>
+  linkedFields.value.filter((f) => isCustomFieldVisible(f))
+)
+
 // 计算属性
 const canSubmit = computed(() => {
   // 标题必填
@@ -360,9 +400,10 @@ const availableTemplates = computed(() => {
   return templates.value.filter(t => !t.issue_type_id || t.issue_type_id === selectedTypeId.value)
 })
 
-// 判断字段是否必填
+// 判断字段是否必填（仅当前上下文可见时计为必填）
 function isFieldRequired(field: any): boolean {
-  return field.is_required === true
+  if (!field.is_required) return false
+  return isCustomFieldVisible(field)
 }
 
 // 判断字段是否有值
@@ -553,6 +594,7 @@ async function loadLinkedFields(typeId: number) {
   try {
     const fields = await issueTypeApi.getIssueTypeFields(typeId, projectId.value)
     linkedFields.value = fields
+    await evaluateNow(buildVisibilityEvaluateBody)
   } catch (error) {
     console.error('Failed to load linked fields:', error)
     linkedFields.value = []
@@ -577,6 +619,8 @@ async function submitForm() {
     toast.warning(t('issue.typeRequiredMsg'))
     return
   }
+
+  await evaluateNow(buildVisibilityEvaluateBody)
 
   // 检查必填自定义字段
   const missingFields = linkedFields.value
@@ -669,6 +713,9 @@ async function submitForm() {
     for (const [fieldId, v] of Object.entries(customFieldValues.value)) {
       const val = v as any
       const field = linkedFields.value.find((f: any) => f.field_id === parseInt(fieldId))
+      if (field && !isCustomFieldVisible(field)) {
+        continue
+      }
       let value = ''
       switch (field?.field_type) {
         case 'text':  value = val.text_value || ''; break
@@ -727,6 +774,21 @@ watch(selectedTypeId, (newTypeId) => {
   }
   applyDefaultTemplateForType(newTypeId)
 })
+
+watch(
+  [
+    () => workspaceId.value,
+    () => selectedTypeId.value,
+    () => formData.value.state_id,
+    () => formData.value.priority,
+    () => formData.value.assignee_id,
+    () => selectedLabelIds.value,
+  ],
+  () => {
+    scheduleEvaluate(buildVisibilityEvaluateBody)
+  },
+  { deep: true }
+)
 
 onMounted(async () => {
   await loadData()
