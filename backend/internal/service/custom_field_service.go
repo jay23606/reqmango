@@ -549,9 +549,9 @@ func (s *CustomFieldService) DeleteOption(fieldID, optionID uint64) error {
 // ==================== Issue Values ====================
 
 func (s *CustomFieldService) SetIssueValue(issueID uint64, req request.IssueCustomFieldValueCreate) (*response.IssueCustomFieldValueResponse, error) {
-	// Verify issue exists
+	// Verify issue exists (preload links for conditional-field visibility)
 	var issue model.Issue
-	if err := s.db.First(&issue, issueID).Error; err != nil {
+	if err := s.db.Preload("AssigneeLinks").Preload("LabelLinks").First(&issue, issueID).Error; err != nil {
 		return nil, common.NotFound("Issue not found")
 	}
 
@@ -577,7 +577,13 @@ func (s *CustomFieldService) SetIssueValue(issueID uint64, req request.IssueCust
 			return nil, err
 		}
 		if required {
-			return nil, common.BadRequest("缺少必填字段: " + name)
+			visible, err := s.isCustomFieldVisibleForIssue(&issue, req.FieldID)
+			if err != nil {
+				return nil, err
+			}
+			if visible {
+				return nil, common.BadRequest("缺少必填字段: " + name)
+			}
 		}
 	}
 
@@ -623,7 +629,7 @@ func (s *CustomFieldService) SetIssueValue(issueID uint64, req request.IssueCust
 
 func (s *CustomFieldService) BulkSetIssueValues(req request.BulkCustomFieldValueUpdate) ([]response.IssueCustomFieldValueResponse, error) {
 	var issue model.Issue
-	if err := s.db.First(&issue, req.IssueID).Error; err != nil {
+	if err := s.db.Preload("AssigneeLinks").Preload("LabelLinks").First(&issue, req.IssueID).Error; err != nil {
 		return nil, common.NotFound("Issue not found")
 	}
 
@@ -650,7 +656,14 @@ func (s *CustomFieldService) BulkSetIssueValues(req request.BulkCustomFieldValue
 			if err != nil {
 				return nil, err
 			}
-			if required && !seen[name] {
+			if !required {
+				continue
+			}
+			visible, err := s.isCustomFieldVisibleForIssue(&issue, fieldID)
+			if err != nil {
+				return nil, err
+			}
+			if visible && !seen[name] {
 				seen[name] = true
 				missing = append(missing, name)
 			}
@@ -721,7 +734,7 @@ func (s *CustomFieldService) ListIssueValues(issueID uint64) ([]response.IssueCu
 
 func (s *CustomFieldService) UpdateIssueValue(issueID, fieldID uint64, val string) (*response.IssueCustomFieldValueResponse, error) {
 	var issue model.Issue
-	if err := s.db.First(&issue, issueID).Error; err != nil {
+	if err := s.db.Preload("AssigneeLinks").Preload("LabelLinks").First(&issue, issueID).Error; err != nil {
 		return nil, common.NotFound("Issue not found")
 	}
 
@@ -745,7 +758,13 @@ func (s *CustomFieldService) UpdateIssueValue(issueID, fieldID uint64, val strin
 			return nil, err
 		}
 		if required {
-			return nil, common.BadRequest("缺少必填字段: " + name)
+			visible, err := s.isCustomFieldVisibleForIssue(&issue, fieldID)
+			if err != nil {
+				return nil, err
+			}
+			if visible {
+				return nil, common.BadRequest("缺少必填字段: " + name)
+			}
 		}
 	}
 
@@ -779,7 +798,7 @@ func (s *CustomFieldService) UpdateIssueValue(issueID, fieldID uint64, val strin
 
 func (s *CustomFieldService) DeleteIssueValue(issueID, fieldID uint64) error {
 	var issue model.Issue
-	if err := s.db.First(&issue, issueID).Error; err != nil {
+	if err := s.db.Preload("AssigneeLinks").Preload("LabelLinks").First(&issue, issueID).Error; err != nil {
 		return common.NotFound("Issue not found")
 	}
 	if !s.fieldBoundToIssueType(&issue, fieldID) {
@@ -791,7 +810,13 @@ func (s *CustomFieldService) DeleteIssueValue(issueID, fieldID uint64) error {
 			return err
 		}
 		if required {
-			return common.BadRequest("缺少必填字段: " + name)
+			visible, err := s.isCustomFieldVisibleForIssue(&issue, fieldID)
+			if err != nil {
+				return err
+			}
+			if visible {
+				return common.BadRequest("缺少必填字段: " + name)
+			}
 		}
 	}
 
@@ -850,6 +875,33 @@ func (s *CustomFieldService) GetIssueFieldsWithValues(issueID uint64) (*response
 	}
 
 	return resp, nil
+}
+
+// isCustomFieldVisibleForIssue reports whether fieldID is visible for the issue's current context
+// (conditional hide rules). When false, required-field clears are allowed on the custom-field API.
+func (s *CustomFieldService) isCustomFieldVisibleForIssue(issue *model.Issue, fieldID uint64) (bool, error) {
+	if issue == nil {
+		return true, nil
+	}
+	condSvc := NewConditionalFieldService(s.db)
+	assigneeIDs := make([]uint64, 0, len(issue.AssigneeLinks))
+	for _, link := range issue.AssigneeLinks {
+		assigneeIDs = append(assigneeIDs, link.UserID)
+	}
+	labelIDs := make([]uint64, 0, len(issue.LabelLinks))
+	for _, link := range issue.LabelLinks {
+		labelIDs = append(labelIDs, link.LabelID)
+	}
+	visibleFieldIDs, err := condSvc.EvaluateFieldVisibility(issue.WorkspaceID, issue.IssueTypeID, issue.StateID, issue.Priority, assigneeIDs, labelIDs)
+	if err != nil {
+		return false, err
+	}
+	for _, id := range visibleFieldIDs {
+		if id == fieldID {
+			return true, nil
+		}
+	}
+	return false, nil
 }
 
 // isTypeFieldRequired reports whether fieldID is required on the given issue type (binding is authoritative).

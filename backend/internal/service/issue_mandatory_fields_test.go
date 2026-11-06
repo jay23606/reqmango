@@ -57,8 +57,8 @@ func TestCreate_SkipsRequiredWhenHiddenByState(t *testing.T) {
 	stateID := done.ID
 
 	issue, err := svc.Create(&request.IssueCreateRequest{
-		Name:   "hidden required cf skipped",
-		TypeID: &typeID,
+		Name:    "hidden required cf skipped",
+		TypeID:  &typeID,
 		StateID: &stateID,
 	}, projID, wsID, userID)
 	require.NoError(t, err)
@@ -327,6 +327,192 @@ func TestSetIssueValue_RejectsEmptyRequired(t *testing.T) {
 	var stored model.IssueCustomFieldValue
 	require.NoError(t, db.Where("issue_id = ? AND field_id = ?", issue.ID, fieldID).First(&stored).Error)
 	require.Equal(t, existing, stored.Value)
+}
+
+func TestSetIssueValue_AllowsEmptyWhenRequiredButHiddenByState(t *testing.T) {
+	db := setupTestDB(t)
+	require.NoError(t, db.AutoMigrate(
+		&model.CustomField{},
+		&model.ConditionalField{},
+		&model.IssueTypeField{},
+		&model.IssueTypeImport{},
+		&model.IssueCustomFieldValue{},
+		&model.IssueActivity{},
+		&model.IssueAssignee{},
+		&model.IssueLabel{},
+		&model.Label{},
+		&model.IssueCycle{},
+		&model.Cycle{},
+		&model.ModuleIssue{},
+		&model.Module{},
+		&model.Webhook{},
+	))
+	wsID, projID, _ := seedTestData(t, db)
+
+	done := &model.State{Name: "Done", Color: "#22c55e", ProjectID: &projID, WorkspaceID: wsID}
+	require.NoError(t, db.Create(done).Error)
+
+	bugType := &model.IssueType{Name: "Bug", WorkspaceID: wsID}
+	require.NoError(t, db.Create(bugType).Error)
+	fieldName := "预估工时"
+	fieldID := seedRequiredCF(t, db, wsID, bugType.ID, fieldName)
+
+	cfSvc := NewConditionalFieldService(db)
+	_, err := cfSvc.Create(&request.ConditionalFieldCreateRequest{
+		WorkspaceID:     wsID,
+		FieldID:         fieldID,
+		ConditionType:   "state",
+		Operator:        "equals",
+		ConditionValues: []string{strconv.FormatUint(done.ID, 10)},
+		IsEnabled:       true,
+		Priority:        0,
+	})
+	require.NoError(t, err)
+
+	issue := seedIssueForMandatoryCFTests(t, db, projID, wsID, bugType.ID)
+	require.NoError(t, db.Model(&model.Issue{}).Where("id = ?", issue.ID).
+		Update("state_id", done.ID).Error)
+
+	existing := "5h"
+	require.NoError(t, db.Create(&model.IssueCustomFieldValue{
+		IssueID: issue.ID,
+		FieldID: fieldID,
+		Value:   existing,
+	}).Error)
+
+	svc := NewCustomFieldService(db)
+	_, err = svc.SetIssueValue(issue.ID, request.IssueCustomFieldValueCreate{
+		FieldID: fieldID,
+		Value:   "",
+	})
+	require.NoError(t, err, "AC-04.1: hidden required must allow clear")
+
+	var stored model.IssueCustomFieldValue
+	res := db.Where("issue_id = ? AND field_id = ?", issue.ID, fieldID).First(&stored)
+	require.NoError(t, res.Error)
+	require.Equal(t, "", stored.Value)
+}
+
+func TestDeleteIssueValue_AllowsWhenRequiredButHiddenByState(t *testing.T) {
+	db := setupTestDB(t)
+	require.NoError(t, db.AutoMigrate(
+		&model.CustomField{},
+		&model.ConditionalField{},
+		&model.IssueTypeField{},
+		&model.IssueTypeImport{},
+		&model.IssueCustomFieldValue{},
+		&model.IssueActivity{},
+		&model.IssueAssignee{},
+		&model.IssueLabel{},
+		&model.Label{},
+		&model.IssueCycle{},
+		&model.Cycle{},
+		&model.ModuleIssue{},
+		&model.Module{},
+		&model.Webhook{},
+	))
+	wsID, projID, _ := seedTestData(t, db)
+
+	done := &model.State{Name: "Done", Color: "#22c55e", ProjectID: &projID, WorkspaceID: wsID}
+	require.NoError(t, db.Create(done).Error)
+
+	bugType := &model.IssueType{Name: "Bug", WorkspaceID: wsID}
+	require.NoError(t, db.Create(bugType).Error)
+	fieldID := seedRequiredCF(t, db, wsID, bugType.ID, "预估工时")
+
+	cfSvc := NewConditionalFieldService(db)
+	_, err := cfSvc.Create(&request.ConditionalFieldCreateRequest{
+		WorkspaceID:     wsID,
+		FieldID:         fieldID,
+		ConditionType:   "state",
+		Operator:        "equals",
+		ConditionValues: []string{strconv.FormatUint(done.ID, 10)},
+		IsEnabled:       true,
+		Priority:        0,
+	})
+	require.NoError(t, err)
+
+	issue := seedIssueForMandatoryCFTests(t, db, projID, wsID, bugType.ID)
+	require.NoError(t, db.Model(&model.Issue{}).Where("id = ?", issue.ID).
+		Update("state_id", done.ID).Error)
+
+	require.NoError(t, db.Create(&model.IssueCustomFieldValue{
+		IssueID: issue.ID,
+		FieldID: fieldID,
+		Value:   "5h",
+	}).Error)
+
+	svc := NewCustomFieldService(db)
+	require.NoError(t, svc.DeleteIssueValue(issue.ID, fieldID))
+
+	var n int64
+	require.NoError(t, db.Model(&model.IssueCustomFieldValue{}).
+		Where("issue_id = ? AND field_id = ?", issue.ID, fieldID).Count(&n).Error)
+	require.Zero(t, n)
+}
+
+func TestBulkSetIssueValues_AllowsEmptyWhenRequiredButHiddenByState(t *testing.T) {
+	db := setupTestDB(t)
+	require.NoError(t, db.AutoMigrate(
+		&model.CustomField{},
+		&model.ConditionalField{},
+		&model.IssueTypeField{},
+		&model.IssueTypeImport{},
+		&model.IssueCustomFieldValue{},
+		&model.IssueActivity{},
+		&model.IssueAssignee{},
+		&model.IssueLabel{},
+		&model.Label{},
+		&model.IssueCycle{},
+		&model.Cycle{},
+		&model.ModuleIssue{},
+		&model.Module{},
+		&model.Webhook{},
+	))
+	wsID, projID, _ := seedTestData(t, db)
+
+	done := &model.State{Name: "Done", Color: "#22c55e", ProjectID: &projID, WorkspaceID: wsID}
+	require.NoError(t, db.Create(done).Error)
+
+	bugType := &model.IssueType{Name: "Bug", WorkspaceID: wsID}
+	require.NoError(t, db.Create(bugType).Error)
+	fieldID := seedRequiredCF(t, db, wsID, bugType.ID, "预估工时")
+
+	cfSvc := NewConditionalFieldService(db)
+	_, err := cfSvc.Create(&request.ConditionalFieldCreateRequest{
+		WorkspaceID:     wsID,
+		FieldID:         fieldID,
+		ConditionType:   "state",
+		Operator:        "equals",
+		ConditionValues: []string{strconv.FormatUint(done.ID, 10)},
+		IsEnabled:       true,
+		Priority:        0,
+	})
+	require.NoError(t, err)
+
+	issue := seedIssueForMandatoryCFTests(t, db, projID, wsID, bugType.ID)
+	require.NoError(t, db.Model(&model.Issue{}).Where("id = ?", issue.ID).
+		Update("state_id", done.ID).Error)
+
+	existing := "bulk clear ok"
+	require.NoError(t, db.Create(&model.IssueCustomFieldValue{
+		IssueID: issue.ID,
+		FieldID: fieldID,
+		Value:   existing,
+	}).Error)
+
+	svc := NewCustomFieldService(db)
+	_, err = svc.BulkSetIssueValues(request.BulkCustomFieldValueUpdate{
+		IssueID: issue.ID,
+		Values: []request.IssueCustomFieldValueUpdateItem{
+			{FieldID: fieldID, Value: ""},
+		},
+	})
+	require.NoError(t, err)
+
+	var stored model.IssueCustomFieldValue
+	require.NoError(t, db.Where("issue_id = ? AND field_id = ?", issue.ID, fieldID).First(&stored).Error)
+	require.Equal(t, "", stored.Value)
 }
 
 func TestDeleteIssueValue_RejectsRequired(t *testing.T) {
