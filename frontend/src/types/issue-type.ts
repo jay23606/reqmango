@@ -46,6 +46,7 @@ export interface IssueTypeCreate {
   description?: string
   level?: number
   parent_type_id?: number
+  allowed_child_type_ids?: number[]
   is_default?: boolean
   sequence?: number
 }
@@ -57,6 +58,7 @@ export interface IssueTypeUpdate {
   description?: string
   level?: number
   parent_type_id?: number
+  allowed_child_type_ids?: number[]
   is_default?: boolean
   sequence?: number
 }
