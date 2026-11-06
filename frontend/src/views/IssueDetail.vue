@@ -85,6 +85,12 @@
             v-else-if="activeTab === 'attachments'"
             :issue-id="issueId"
             :project-id="projectId"
+            @attachment-count-change="
+              (c) => {
+                attachmentCountOverride = c
+                if (issue) issue.attachment_count = c
+              }
+            "
           />
           <IssueGitPanel
             v-else-if="activeTab === 'git'"
@@ -207,6 +213,7 @@ import AICopilot from '@/components/AICopilot.vue'
 import approvalApi, { type ApprovalResponse } from '@/api/approval'
 import type { FieldVisibilityEvaluateRequest } from '@/api/conditional-field'
 import { useCustomFieldVisibility } from '@/composables/useCustomFieldVisibility'
+import { useProjectPermissions } from '@/composables/usePermission'
 // Route params
 const route = useRoute()
 const router = useRouter()
@@ -218,6 +225,10 @@ const projectId = ref(0)
 const workspaceId = ref(0)
 const projectIdentifier = ref('')
 const projectLabels = ref<Array<{ id: number; name: string; color: string }>>([])
+
+useProjectPermissions(projectId)
+/** Syncs tab badge with AttachmentManager list without refetching the whole issue. */
+const attachmentCountOverride = ref<number | null>(null)
 
 // Reactive state
 const issue = ref<any>(null)
@@ -331,7 +342,14 @@ const tabs = computed(() => {
   return [
   { key: 'details', label: t('issue.tabDetails'), count: undefined },
   { key: 'relations', label: t('issue.tabRelations'), count: relationsTabTotal > 0 ? relationsTabTotal : undefined },
-  { key: 'attachments', label: t('issue.tabAttachments'), count: issue.value?.attachment_count || undefined },
+  {
+    key: 'attachments',
+    label: t('issue.tabAttachments'),
+    count: (() => {
+      const n = attachmentCountOverride.value ?? issue.value?.attachment_count
+      return n != null && n > 0 ? n : undefined
+    })(),
+  },
   { key: 'activity', label: t('issue.tabActivity'), count: undefined },
   { key: 'ai', label: 'AI', count: undefined },
   { key: 'chat', label: t('issue.tabChat'), count: undefined },
@@ -357,6 +375,7 @@ onMounted(async () => {
   try {
     const issueData = await issueApi.getIssue(issueId)
     issue.value = issueData
+    attachmentCountOverride.value = null
     if (issueData.workspace_id) workspaceId.value = issueData.workspace_id
     if (issueData.project_id) projectId.value = issueData.project_id
     projectIdentifier.value = issueData.project?.identifier || ''
@@ -825,6 +844,7 @@ async function handleRelationsRefresh() {
       Object.assign(issue.value, data)
     }
     await loadRelationSummary()
+    await relationsTabRef.value?.loadLinkedPages?.()
   } catch (err) {
     console.error('Failed to refresh issue after relations change:', err)
   }

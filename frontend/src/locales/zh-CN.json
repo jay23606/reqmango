@@ -193,6 +193,12 @@
     "noPages": "无关联文档",
     "addPage": "+ 添加文档",
     "searchPagesPlaceholder": "搜索文档...",
+    "unlinkPage": "解除关联",
+    "linkedPagesSearchMinChars": "至少输入 2 个字符以搜索。",
+    "linkedPagesNoSearchResults": "本项目中没有匹配的文档。",
+    "linkedPagesAdded": "已关联文档",
+    "linkedPagesRemoved": "已解除关联",
+    "linkedPagesLoadFailed": "加载关联文档失败",
     "cancel": "取消",
     "save": "保存",
     "saving": "保存中...",
@@ -2875,7 +2881,12 @@
     "count": "({count})",
     "download": "下载",
     "delete": "删除",
-    "confirmDelete": "确定要删除 \"{name}\" 吗？"
+    "confirmDelete": "确定要删除 \"{name}\" 吗？",
+    "readOnlyHint": "您没有上传或删除附件的权限，仍可下载已有文件。",
+    "oversize": "「{name}」超过 10MB 限制，未上传。",
+    "uploadFailed": "上传失败。",
+    "deleteFailed": "删除失败。",
+    "loadFailed": "加载附件列表失败。"
   },
   "notification": {
     "title": "通知",

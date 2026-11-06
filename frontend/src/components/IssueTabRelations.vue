@@ -15,6 +15,13 @@
       @dismiss-hierarchy-error="hierarchyError = null"
     />
 
+    <IssueLinkedPagesCard
+      ref="linkedPagesCardRef"
+      :issue-id="issueId"
+      :project-id="projectId"
+      :slug="slug"
+    />
+
     <!-- Parent issue link -->
     <div v-if="parent" class="flex items-center gap-2 text-xs text-gray-500 bg-white border border-gray-200 rounded-lg px-3 py-2">
       <span class="text-gray-400">{{ t('issue.parentIssue') }}:</span>
@@ -197,6 +204,7 @@ import { useProjectPermissions } from '@/composables/usePermission'
 import { listIssueRelations, createIssueRelation, deleteIssueRelation, listRelationTypes } from '@/api/relation'
 import { createIssue, updateIssue } from '@/api/issue'
 import IssuePickerDialog from './IssuePickerDialog.vue'
+import IssueLinkedPagesCard from './IssueLinkedPagesCard.vue'
 import RelationSubIssuesCard from './RelationSubIssuesCard.vue'
 import { stateColor, priorityColor } from '@/composables/useRelationHelpers'
 import { IssuePriority } from '@/types/issue'
@@ -286,6 +294,12 @@ const pendingRelationTypeId = ref(0)
 
 // Type menu
 const showTypeMenu = ref(false)
+
+const linkedPagesCardRef = ref<InstanceType<typeof IssueLinkedPagesCard> | null>(null)
+
+async function loadLinkedPages() {
+  await linkedPagesCardRef.value?.loadLinkedPages()
+}
 
 // Group relations by type - only types that have relations
 const relationGroups = computed<RelationGroup[]>(() => {
@@ -463,5 +477,5 @@ async function removeRelation(relationId: number) {
   }
 }
 
-defineExpose({ relationSummary, loadRelations })
+defineExpose({ relationSummary, loadRelations, loadLinkedPages })
 </script>

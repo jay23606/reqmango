@@ -193,6 +193,12 @@
     "noPages": "No related pages",
     "addPage": "+ Add Page",
     "searchPagesPlaceholder": "Search pages...",
+    "unlinkPage": "Unlink",
+    "linkedPagesSearchMinChars": "Enter at least 2 characters to search.",
+    "linkedPagesNoSearchResults": "No matching pages in this project.",
+    "linkedPagesAdded": "Page linked",
+    "linkedPagesRemoved": "Page unlinked",
+    "linkedPagesLoadFailed": "Failed to load linked pages",
     "cancel": "Cancel",
     "save": "Save",
     "saving": "Saving...",
@@ -2875,7 +2881,12 @@
     "count": "({count})",
     "download": "Download",
     "delete": "Delete",
-    "confirmDelete": "Are you sure you want to delete \"{name}\"?"
+    "confirmDelete": "Are you sure you want to delete \"{name}\"?",
+    "readOnlyHint": "You do not have permission to upload or delete attachments. You can still download existing files.",
+    "oversize": "\"{name}\" exceeds the 10MB limit and was not uploaded.",
+    "uploadFailed": "Upload failed.",
+    "deleteFailed": "Delete failed.",
+    "loadFailed": "Failed to load attachments."
   },
   "notification": {
     "title": "Notifications",
