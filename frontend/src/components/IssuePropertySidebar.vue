@@ -225,7 +225,7 @@
               class="prop-input"
               :value="cf.value ?? ''"
               :disabled="isLocked"
-              @change="(e: Event) => emitCustomFieldUpdate(cf.field.id, (e.target as HTMLInputElement).value)"
+              @change="(e: Event) => attemptCustomFieldUpdate(cf, (e.target as HTMLInputElement).value)"
             />
             <input
               v-else-if="cf.field.field_type === 'number'"
@@ -233,7 +233,7 @@
               class="prop-input"
               :value="cf.value ?? ''"
               :disabled="isLocked"
-              @change="(e: Event) => emitCustomFieldUpdate(cf.field.id, (e.target as HTMLInputElement).value)"
+              @change="(e: Event) => attemptCustomFieldUpdate(cf, (e.target as HTMLInputElement).value)"
             />
             <input
               v-else-if="cf.field.field_type === 'date'"
@@ -241,7 +241,7 @@
               class="prop-input"
               :value="cf.value ?? ''"
               :disabled="isLocked"
-              @change="(e: Event) => emitCustomFieldUpdate(cf.field.id, (e.target as HTMLInputElement).value)"
+              @change="(e: Event) => attemptCustomFieldUpdate(cf, (e.target as HTMLInputElement).value)"
             />
             <label v-else-if="cf.field.field_type === 'boolean'" class="flex items-center gap-2" :class="isLocked ? 'cursor-not-allowed' : 'cursor-pointer'">
               <input
@@ -249,7 +249,7 @@
                 class="w-4 h-4 rounded border-gray-300 text-indigo-600"
                 :checked="cf.value === 'true'"
                 :disabled="isLocked"
-                @change="(e: Event) => emitCustomFieldUpdate(cf.field.id, (e.target as HTMLInputElement).checked ? 'true' : 'false')"
+                @change="(e: Event) => attemptCustomFieldUpdate(cf, (e.target as HTMLInputElement).checked ? 'true' : 'false')"
               />
               <span class="text-sm text-gray-700">{{ cf.value === 'true' ? t('customField.yes') : t('customField.no') }}</span>
             </label>
@@ -258,7 +258,7 @@
               class="prop-input"
               :value="cf.value ?? ''"
               :disabled="isLocked"
-              @change="(e: Event) => emitCustomFieldUpdate(cf.field.id, (e.target as HTMLSelectElement).value)"
+              @change="(e: Event) => attemptCustomFieldUpdate(cf, (e.target as HTMLSelectElement).value)"
             >
               <option value=""></option>
               <option v-for="opt in cf.field.options" :key="opt.id" :value="opt.value">{{ opt.value }}</option>
@@ -266,9 +266,12 @@
             <select
               v-else-if="cf.field.field_type === 'member'"
               class="prop-input"
-              :value="cf.value ? JSON.parse(cf.value)[0] ?? '' : ''"
+              :value="memberSelectValue(cf.value)"
               :disabled="isLocked"
-              @change="(e: Event) => emitCustomFieldUpdate(cf.field.id, JSON.stringify([Number((e.target as HTMLSelectElement).value)]))"
+              @change="(e: Event) => {
+                const v = (e.target as HTMLSelectElement).value
+                attemptCustomFieldUpdate(cf, v === '' ? '' : JSON.stringify([Number(v)]))
+              }"
             >
               <option value=""></option>
               <option v-for="m in members" :key="m.id" :value="m.id">{{ m.display_name }}</option>
@@ -283,6 +286,8 @@
 <script setup lang="ts">
 import { ref, watch, computed, nextTick } from 'vue'
 import { useI18n } from '@/composables/useI18n'
+import { useToast } from '@/composables/useToast'
+import { isEmptyIssueCustomFieldValue } from '@/utils/issue-custom-field-empty'
 import AgentSelector from '@/components/AgentSelector.vue'
 import LabelSelector from '@/components/LabelSelector.vue'
 import PropertyPicker, { type PickerOption } from '@/components/PropertyPicker.vue'
@@ -376,6 +381,7 @@ function emitAssign() {
 }
 
 const { t, locale } = useI18n()
+const toast = useToast()
 
 const agentActivities = ref<AgentActivity[]>([])
 
@@ -428,8 +434,21 @@ function activityPreview(markdown: string | undefined): string {
     .trim()
 }
 
-function emitCustomFieldUpdate(fieldId: number, value: string) {
-  emit('update:customField', fieldId, value)
+function memberSelectValue(raw: string | null): string | number {
+  if (!raw) return ''
+  try {
+    const parsed = JSON.parse(raw)
+    if (Array.isArray(parsed) && parsed.length > 0) return parsed[0] ?? ''
+  } catch { /* ignore */ }
+  return ''
+}
+
+function attemptCustomFieldUpdate(cf: CustomFieldEntry, value: string) {
+  if (cf.field.is_required && isEmptyIssueCustomFieldValue(cf.field.field_type, value)) {
+    toast.warning(t('issue.requiredFieldsMsg', { fields: cf.field.name }))
+    return
+  }
+  emit('update:customField', cf.field.id, value)
 }
 function toId(value: string | number | null): number | null {
   return value === null ? null : Number(value)
