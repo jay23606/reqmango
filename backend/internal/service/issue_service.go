@@ -2009,6 +2009,11 @@ func (s *IssueService) BuildIssueResponse(issue *model.Issue) (*response.IssueRe
 	// Sub-issues count
 	resp.SubIssuesCount = int64(len(issue.SubIssues))
 
+	var attachmentCount int64
+	if err := s.db.Model(&model.Attachment{}).Where("issue_id = ?", issue.ID).Count(&attachmentCount).Error; err == nil {
+		resp.AttachmentCount = int(attachmentCount)
+	}
+
 	// Soft delete
 	if issue.DeletedAt.Valid {
 		resp.DeletedAt = &issue.DeletedAt.Time
