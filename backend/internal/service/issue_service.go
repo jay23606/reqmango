@@ -3049,12 +3049,57 @@ func (s *IssueService) ConvertType(issueID uint64, req *request.ConvertTypeReque
 		return nil, common.BadRequest("Issue already has this type")
 	}
 
+	var storedCF []model.IssueCustomFieldValue
+	if err := s.db.Where("issue_id = ?", issueID).Find(&storedCF).Error; err != nil {
+		return nil, common.Internal("Failed to load custom field values")
+	}
+	merged := make(map[uint64]interface{}, len(storedCF))
+	for _, row := range storedCF {
+		merged[row.FieldID] = row.Value
+	}
+	if req.CustomFieldValues != nil {
+		for fieldID, v := range req.CustomFieldValues {
+			merged[fieldID] = v
+		}
+	}
+
+	if err := s.validateMandatoryCustomFields(issue.ProjectID, issue.WorkspaceID, req.TargetTypeID, merged); err != nil {
+		return nil, err
+	}
+
 	oldTypeName := ""
 	if issue.IssueType.ID != 0 {
 		oldTypeName = issue.IssueType.Name
 	}
 
 	tx := s.db.Begin()
+	if tx.Error != nil {
+		return nil, common.Internal("Failed to begin transaction")
+	}
+
+	if req.CustomFieldValues != nil {
+		for fieldID, value := range req.CustomFieldValues {
+			var stringValue string
+			switch v := value.(type) {
+			case string:
+				stringValue = v
+			default:
+				stringValue = fmt.Sprintf("%v", v)
+			}
+			if err := tx.Where("issue_id = ? AND field_id = ?", issueID, fieldID).Delete(&model.IssueCustomFieldValue{}).Error; err != nil {
+				tx.Rollback()
+				return nil, common.Internal("Failed to update custom field values")
+			}
+			if err := tx.Create(&model.IssueCustomFieldValue{
+				IssueID: issueID,
+				FieldID: fieldID,
+				Value:   stringValue,
+			}).Error; err != nil {
+				tx.Rollback()
+				return nil, common.Internal("Failed to update custom field values")
+			}
+		}
+	}
 
 	// Use Table().Where() to avoid GORM's Model(struct) behavior of
 	// re-applying the struct's non-zero field values over the map values.

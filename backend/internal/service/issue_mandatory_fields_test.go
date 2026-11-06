@@ -306,3 +306,96 @@ func TestBulkSetIssueValues_RejectsEmptyRequired(t *testing.T) {
 	require.NoError(t, db.Where("issue_id = ? AND field_id = ?", issue.ID, fieldID).First(&stored).Error)
 	require.Equal(t, existing, stored.Value)
 }
+
+func TestConvertType_RejectsWhenTargetRequiresMissingCF(t *testing.T) {
+	db := setupTestDB(t)
+	require.NoError(t, db.AutoMigrate(
+		&model.CustomField{},
+		&model.IssueTypeField{},
+		&model.IssueTypeImport{},
+		&model.IssueCustomFieldValue{},
+		&model.IssueActivity{},
+		&model.IssueAssignee{},
+		&model.IssueLabel{},
+		&model.Label{},
+		&model.IssueCycle{},
+		&model.Cycle{},
+		&model.ModuleIssue{},
+		&model.Module{},
+		&model.Webhook{},
+	))
+	wsID, projID, userID := seedTestData(t, db)
+	ensureDefaultIssueState(t, db, projID)
+
+	typeA := &model.IssueType{Name: "FeatureNoReq", WorkspaceID: wsID}
+	require.NoError(t, db.Create(typeA).Error)
+	bugType := &model.IssueType{Name: "Bug", WorkspaceID: wsID}
+	require.NoError(t, db.Create(bugType).Error)
+	fieldName := "复现步骤"
+	_ = seedRequiredCF(t, db, wsID, bugType.ID, fieldName)
+
+	issue := seedIssueForMandatoryCFTests(t, db, projID, wsID, typeA.ID)
+	origTypeID := typeA.ID
+
+	svc := NewIssueService(db, nil, NewWebhookService(db), nil, nil)
+	_, err := svc.ConvertType(issue.ID, &request.ConvertTypeRequest{TargetTypeID: bugType.ID}, userID)
+	require.Error(t, err)
+	appErr, ok := err.(*common.AppError)
+	require.True(t, ok, "want *common.AppError, got %T: %v", err, err)
+	require.Equal(t, common.ErrBadRequest, appErr.ErrorCode)
+	require.Contains(t, appErr.Message, "缺少必填字段")
+	require.Contains(t, appErr.Message, fieldName)
+
+	var reloaded model.Issue
+	require.NoError(t, db.First(&reloaded, issue.ID).Error)
+	require.NotNil(t, reloaded.IssueTypeID)
+	require.Equal(t, origTypeID, *reloaded.IssueTypeID)
+}
+
+func TestConvertType_WithCustomFieldValues_SatisfiesRequiredAndPersists(t *testing.T) {
+	db := setupTestDB(t)
+	require.NoError(t, db.AutoMigrate(
+		&model.CustomField{},
+		&model.IssueTypeField{},
+		&model.IssueTypeImport{},
+		&model.IssueCustomFieldValue{},
+		&model.IssueActivity{},
+		&model.IssueAssignee{},
+		&model.IssueLabel{},
+		&model.Label{},
+		&model.IssueCycle{},
+		&model.Cycle{},
+		&model.ModuleIssue{},
+		&model.Module{},
+		&model.Webhook{},
+	))
+	wsID, projID, userID := seedTestData(t, db)
+	ensureDefaultIssueState(t, db, projID)
+
+	typeA := &model.IssueType{Name: "FeatureNoReq", WorkspaceID: wsID}
+	require.NoError(t, db.Create(typeA).Error)
+	bugType := &model.IssueType{Name: "Bug", WorkspaceID: wsID}
+	require.NoError(t, db.Create(bugType).Error)
+	fieldID := seedRequiredCF(t, db, wsID, bugType.ID, "复现步骤")
+
+	issue := seedIssueForMandatoryCFTests(t, db, projID, wsID, typeA.ID)
+	value := "打开应用并复现"
+
+	svc := NewIssueService(db, nil, NewWebhookService(db), nil, nil)
+	_, err := svc.ConvertType(issue.ID, &request.ConvertTypeRequest{
+		TargetTypeID: bugType.ID,
+		CustomFieldValues: map[uint64]interface{}{
+			fieldID: value,
+		},
+	}, userID)
+	require.NoError(t, err)
+
+	var reloaded model.Issue
+	require.NoError(t, db.First(&reloaded, issue.ID).Error)
+	require.NotNil(t, reloaded.IssueTypeID)
+	require.Equal(t, bugType.ID, *reloaded.IssueTypeID)
+
+	var stored model.IssueCustomFieldValue
+	require.NoError(t, db.Where("issue_id = ? AND field_id = ?", issue.ID, fieldID).First(&stored).Error)
+	require.Equal(t, value, stored.Value)
+}
