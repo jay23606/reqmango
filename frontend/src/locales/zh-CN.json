@@ -2916,6 +2916,7 @@
     "title": "子工作项",
     "add": "添加",
     "noSubIssues": "暂无子工作项",
+    "emptyHint": "可在此快速新建子工作项，或从本项目选择已有工作项关联为子项。",
     "childCount": "{count} 个子项",
     "startDate": "开始日期",
     "targetDate": "目标日期",

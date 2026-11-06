@@ -324,16 +324,21 @@ async function loadRelationSummary() {
 }
 
 // Tabs definition
-const tabs = computed(() => [
+const tabs = computed(() => {
+  const relationCount = relationSidebarSummary.value?.total ?? 0
+  const subCount = Array.isArray(issue.value?.sub_issues) ? issue.value.sub_issues.length : 0
+  const relationsTabTotal = relationCount + subCount
+  return [
   { key: 'details', label: t('issue.tabDetails'), count: undefined },
-  { key: 'relations', label: t('issue.tabRelations'), count: relationSidebarSummary.value?.total ?? undefined },
+  { key: 'relations', label: t('issue.tabRelations'), count: relationsTabTotal > 0 ? relationsTabTotal : undefined },
   { key: 'attachments', label: t('issue.tabAttachments'), count: issue.value?.attachment_count || undefined },
   { key: 'activity', label: t('issue.tabActivity'), count: undefined },
   { key: 'ai', label: 'AI', count: undefined },
   { key: 'chat', label: t('issue.tabChat'), count: undefined },
   { key: 'git', label: t('gitIntegration.title'), count: undefined },
   { key: 'timetrack', label: t('issue.tabTimetrack'), count: undefined },
-])
+  ]
+})
 
 // Props for IssueTabDetails
 const detailProps = computed(() => ({

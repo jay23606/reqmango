@@ -1,26 +1,47 @@
 <template>
   <div class="border border-green-200 rounded-lg overflow-hidden bg-green-50/30">
     <!-- Card header -->
+    <div
+      v-if="hierarchyError"
+      class="px-3 py-2 text-xs text-red-800 bg-red-50 border-b border-red-100 flex items-start justify-between gap-2"
+      data-test="subissue-hierarchy-error"
+    >
+      <span class="leading-snug">{{ hierarchyError }}</span>
+      <button
+        type="button"
+        class="shrink-0 text-red-500 hover:text-red-700 px-1"
+        :aria-label="t('common.close')"
+        @click="$emit('dismiss-hierarchy-error')"
+      >×</button>
+    </div>
+
     <div class="flex items-center justify-between px-3 py-2 bg-green-50 border-b border-green-100">
       <div class="flex items-center gap-2">
         <span class="text-xs font-semibold text-green-700">{{ t('subIssue.title') }}</span>
         <span
           v-if="subIssues.length > 0"
           class="px-1.5 py-0.5 rounded-full text-[10px] font-medium bg-green-100 text-green-700"
+          data-test="subissue-count-badge"
         >{{ completedCount }}/{{ subIssues.length }}</span>
+        <span
+          v-else
+          class="px-1.5 py-0.5 rounded-full text-[10px] font-medium bg-green-100/80 text-green-600"
+          data-test="subissue-count-badge"
+        >0</span>
       </div>
       <!-- Add dropdown -->
-      <div class="relative">
+      <div v-if="canAddSubIssues" class="relative">
         <button
           data-test="add-subissue"
           class="text-[10px] font-medium text-green-600 hover:text-green-800 hover:underline"
-          @click="showMenu = !showMenu"
+          @click="toggleAddMenu"
         >+ {{ t('subIssue.add') }}</button>
         <div
           v-if="showMenu"
           class="absolute right-0 top-full mt-1 w-44 bg-white border border-gray-200 rounded-lg shadow-lg z-10 py-1"
         >
           <button
+            v-if="canLinkExisting"
             data-test="add-existing-subissue"
             class="w-full text-left px-3 py-2 text-xs text-gray-700 hover:bg-gray-50 flex items-center gap-2"
             @click="selectExisting"
@@ -29,6 +50,7 @@
             {{ t('subIssue.selectExisting') }}
           </button>
           <button
+            v-if="canQuickCreate"
             data-test="quick-create-subissue"
             class="w-full text-left px-3 py-2 text-xs text-gray-700 hover:bg-gray-50 flex items-center gap-2"
             @click="startQuickCreate"
@@ -93,8 +115,29 @@
     </div>
 
     <!-- Empty state -->
-    <div v-if="subIssues.length === 0 && !quickCreating" class="px-4 py-6 text-center text-xs text-gray-400">
-      {{ t('subIssue.noSubIssues') }}
+    <div v-if="subIssues.length === 0 && !quickCreating" class="px-4 py-6 text-center text-xs text-gray-500">
+      <p class="text-gray-500">{{ t('subIssue.noSubIssues') }}</p>
+      <p class="mt-1 text-[10px] text-gray-400">{{ t('subIssue.emptyHint') }}</p>
+      <div v-if="canAddSubIssues" class="mt-4 flex flex-wrap justify-center gap-2">
+        <button
+          v-if="canQuickCreate"
+          type="button"
+          data-test="empty-quick-create-subissue"
+          class="px-3 py-1.5 text-[10px] font-medium rounded-md bg-green-600 text-white hover:bg-green-700 transition-colors"
+          @click="startQuickCreateFromEmpty"
+        >
+          {{ t('subIssue.quickCreate') }}
+        </button>
+        <button
+          v-if="canLinkExisting"
+          type="button"
+          data-test="empty-add-existing-subissue"
+          class="px-3 py-1.5 text-[10px] font-medium rounded-md border border-green-200 text-green-700 bg-white hover:bg-green-50 transition-colors"
+          @click="selectExistingFromEmpty"
+        >
+          {{ t('subIssue.selectExisting') }}
+        </button>
+      </div>
     </div>
 
     <!-- Table of sub-issues -->
@@ -211,11 +254,26 @@ interface SubIssue {
   issue_type?: IssueType
 }
 
-const props = defineProps<{
-  subIssues: SubIssue[]
-  issueTypes?: IssueType[]
-  parentIssueType?: { id: number; level: number } | null
-}>()
+const props = withDefaults(
+  defineProps<{
+    subIssues: SubIssue[]
+    issueTypes?: IssueType[]
+    parentIssueType?: { id: number; level: number } | null
+    /** POST /issues with parent_id — quick create. */
+    canQuickCreate?: boolean
+    /** PUT other issue parent_id — add existing. */
+    canLinkExisting?: boolean
+    /** Server message from hierarchy / parent update failure. */
+    hierarchyError?: string | null
+  }>(),
+  {
+    canQuickCreate: true,
+    canLinkExisting: true,
+    hierarchyError: null,
+  },
+)
+
+const canAddSubIssues = computed(() => props.canQuickCreate || props.canLinkExisting)
 
 // Filter types to only those compatible with the parent issue's type level.
 // Child type level must be >= parent type level (cannot be shallower).
@@ -232,6 +290,7 @@ const emit = defineEmits<{
   navigate: [issueId: number]
   'add-existing': []
   'quick-create': [name: string, typeId?: number]
+  'dismiss-hierarchy-error': []
 }>()
 
 const completedCount = computed(() => props.subIssues.filter((s) => s.state_group === 'done').length)
@@ -248,18 +307,43 @@ const selectedType = computed(() => {
   return allowedIssueTypes.value.find(t => t.id === selectedTypeId.value) || null
 })
 
+function dismissHierarchyAnd(fn: () => void) {
+  if (props.hierarchyError) emit('dismiss-hierarchy-error')
+  fn()
+}
+
+function toggleAddMenu() {
+  dismissHierarchyAnd(() => { showMenu.value = !showMenu.value })
+}
+
 function selectExisting() {
-  showMenu.value = false
-  emit('add-existing')
+  dismissHierarchyAnd(() => {
+    showMenu.value = false
+    emit('add-existing')
+  })
+}
+
+function selectExistingFromEmpty() {
+  dismissHierarchyAnd(() => {
+    showMenu.value = false
+    emit('add-existing')
+  })
 }
 
 async function startQuickCreate() {
-  showMenu.value = false
+  dismissHierarchyAnd(() => {
+    showMenu.value = false
+  })
   quickCreating.value = true
   quickName.value = ''
   showTypeDropdown.value = false
   await nextTick()
   quickInput.value?.focus()
+}
+
+async function startQuickCreateFromEmpty() {
+  showMenu.value = false
+  await startQuickCreate()
 }
 
 function selectType(typeId: number) {

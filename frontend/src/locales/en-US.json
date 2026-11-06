@@ -2916,6 +2916,7 @@
     "title": "Sub-Issues",
     "add": "Add",
     "noSubIssues": "No sub-issues yet",
+    "emptyHint": "Add a new sub-issue or link an existing one from this project.",
     "childCount": "{count} sub-items",
     "startDate": "Start Date",
     "targetDate": "Target Date",
