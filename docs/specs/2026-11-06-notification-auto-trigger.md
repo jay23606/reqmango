@@ -1,8 +1,8 @@
-# 通知自动送达 — 需求规格说明书（SRS）
+﻿# 通知自动送达 — 需求规格说明书（SRS）
 
 | 项 | 值 |
 |----|-----|
-| 状态 | 草稿 |
+| 状态 | 已冻结 |
 | 日期 | 2026-11-06 |
 | 关联 | ROADMAP Next · [sdd.md](../dev/sdd.md) · [notification-design.md](../kb/architecture/notification-design.md) |
 
