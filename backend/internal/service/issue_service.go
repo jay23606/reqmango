@@ -221,15 +221,6 @@ func (s *IssueService) Create(req *request.IssueCreateRequest, projectID, worksp
 		}
 	}
 
-	// Validate mandatory custom fields
-	var typeID uint64
-	if req.TypeID != nil {
-		typeID = *req.TypeID
-	}
-	if err := s.validateMandatoryCustomFields(projectID, workspaceID, typeID, req.CustomFieldValues); err != nil {
-		return nil, err
-	}
-
 	// Parse dates
 	if req.StartDate != nil {
 		if t, err := time.Parse(time.RFC3339, *req.StartDate); err == nil {
@@ -271,6 +262,25 @@ func (s *IssueService) Create(req *request.IssueCreateRequest, projectID, worksp
 
 	// Validate labels belong to this project
 	if err := validateLabelsBelongToProject(s.db, req.LabelIDs, projectID); err != nil {
+		return nil, err
+	}
+
+	// Validate mandatory custom fields (only fields visible under the resolved context)
+	var createTypeID uint64
+	var createTypePtr *uint64
+	if req.TypeID != nil {
+		createTypeID = *req.TypeID
+		if createTypeID > 0 {
+			createTypePtr = &createTypeID
+		}
+	}
+	if err := s.validateMandatoryCustomFields(workspaceID, createTypePtr, req.CustomFieldValues, fieldVisibilityContext{
+		IssueTypeID: createTypeID,
+		StateID:     stateID,
+		Priority:    priority,
+		AssigneeIDs: assigneeIDs,
+		LabelIDs:    req.LabelIDs,
+	}); err != nil {
 		return nil, err
 	}
 
@@ -2142,6 +2152,11 @@ func (s *IssueService) importItems(projectID, workspaceID, userID uint64, items 
 	if err != nil {
 		return nil, err
 	}
+	var defaultImportState model.State
+	if err := s.db.Where("project_id = ? AND is_default = ?", projectID, true).First(&defaultImportState).Error; err != nil {
+		return nil, common.NotFound("No default state found for project")
+	}
+	importDefaultStateID := defaultImportState.ID
 	typeMap, err := s.loadTypeMap(projectID)
 	if err != nil {
 		return nil, err
@@ -2271,7 +2286,22 @@ func (s *IssueService) importItems(projectID, workspaceID, userID uint64, items 
 		// Mandatory custom fields (type binding): same rule as Create; import has no CF columns yet.
 		if typeID > 0 {
 			cfValues := importCustomFieldValues(item)
-			if err := s.validateMandatoryCustomFields(projectID, workspaceID, typeID, cfValues); err != nil {
+			visibilityStateID := stateID
+			if visibilityStateID == 0 {
+				visibilityStateID = importDefaultStateID
+			}
+			priority := strings.TrimSpace(item.Priority)
+			if priority == "" {
+				priority = common.PriorityNone
+			}
+			typePtr := typeID
+			if err := s.validateMandatoryCustomFields(workspaceID, &typePtr, cfValues, fieldVisibilityContext{
+				IssueTypeID: typeID,
+				StateID:     visibilityStateID,
+				Priority:    priority,
+				AssigneeIDs: assigneeIDs,
+				LabelIDs:    labelIDs,
+			}); err != nil {
 				result.FailCount++
 				msg := err.Error()
 				var appErr *common.AppError
@@ -2717,7 +2747,22 @@ func importCustomFieldValues(item request.ImportIssueItem) map[uint64]interface{
 	return nil
 }
 
-func (s *IssueService) validateMandatoryCustomFields(projectID, workspaceID, issueTypeID uint64, cfValues map[uint64]interface{}) error {
+// fieldVisibilityContext carries issue context for conditional-field visibility
+// when enforcing mandatory custom fields (write paths only).
+type fieldVisibilityContext struct {
+	IssueTypeID uint64
+	StateID     uint64
+	Priority    string
+	AssigneeIDs []uint64
+	LabelIDs    []uint64
+}
+
+func (s *IssueService) validateMandatoryCustomFields(workspaceID uint64, issueTypeID *uint64, cfValues map[uint64]interface{}, ctx fieldVisibilityContext) error {
+	if issueTypeID == nil || *issueTypeID == 0 {
+		return nil
+	}
+	typeID := *issueTypeID
+
 	var requiredFields []struct {
 		FieldID uint64
 		Name    string
@@ -2726,7 +2771,7 @@ func (s *IssueService) validateMandatoryCustomFields(projectID, workspaceID, iss
 	err := s.db.Table("issue_type_fields").
 		Select("issue_type_fields.field_id, custom_fields.name").
 		Joins("JOIN custom_fields ON custom_fields.id = issue_type_fields.field_id").
-		Where("issue_type_fields.type_id = ? AND issue_type_fields.is_required = ?", issueTypeID, true).
+		Where("issue_type_fields.type_id = ? AND issue_type_fields.is_required = ?", typeID, true).
 		Scan(&requiredFields).Error
 
 	if err != nil {
@@ -2739,8 +2784,25 @@ func (s *IssueService) validateMandatoryCustomFields(projectID, workspaceID, iss
 		cfValues = map[uint64]interface{}{}
 	}
 
+	typePtr := &ctx.IssueTypeID
+	if ctx.IssueTypeID == 0 {
+		typePtr = nil
+	}
+	condSvc := NewConditionalFieldService(s.db)
+	visibleFieldIDs, err := condSvc.EvaluateFieldVisibility(workspaceID, typePtr, ctx.StateID, ctx.Priority, ctx.AssigneeIDs, ctx.LabelIDs)
+	if err != nil {
+		return err
+	}
+	visibleSet := make(map[uint64]struct{}, len(visibleFieldIDs))
+	for _, id := range visibleFieldIDs {
+		visibleSet[id] = struct{}{}
+	}
+
 	var missingFields []string
 	for _, rf := range requiredFields {
+		if _, ok := visibleSet[rf.FieldID]; !ok {
+			continue
+		}
 		if val, exists := cfValues[rf.FieldID]; !exists || val == nil || val == "" {
 			missingFields = append(missingFields, rf.Name)
 		}
@@ -3064,7 +3126,7 @@ func (s *IssueService) moveSubtasks(tx *gorm.DB, parentID, targetProjectID, work
 // ConvertType converts an issue's type to the target type.
 func (s *IssueService) ConvertType(issueID uint64, req *request.ConvertTypeRequest, userID uint64) (*response.IssueResponse, error) {
 	var issue model.Issue
-	if err := s.db.Preload("IssueType").First(&issue, issueID).Error; err != nil {
+	if err := s.db.Preload("IssueType").Preload("AssigneeLinks").Preload("LabelLinks").First(&issue, issueID).Error; err != nil {
 		return nil, common.NotFound("Issue not found")
 	}
 
@@ -3091,7 +3153,22 @@ func (s *IssueService) ConvertType(issueID uint64, req *request.ConvertTypeReque
 		}
 	}
 
-	if err := s.validateMandatoryCustomFields(issue.ProjectID, issue.WorkspaceID, req.TargetTypeID, merged); err != nil {
+	assigneeIDs := make([]uint64, 0, len(issue.AssigneeLinks))
+	for _, link := range issue.AssigneeLinks {
+		assigneeIDs = append(assigneeIDs, link.UserID)
+	}
+	labelIDs := make([]uint64, 0, len(issue.LabelLinks))
+	for _, link := range issue.LabelLinks {
+		labelIDs = append(labelIDs, link.LabelID)
+	}
+	targetTypeID := req.TargetTypeID
+	if err := s.validateMandatoryCustomFields(issue.WorkspaceID, &targetTypeID, merged, fieldVisibilityContext{
+		IssueTypeID: targetTypeID,
+		StateID:     issue.StateID,
+		Priority:    issue.Priority,
+		AssigneeIDs: assigneeIDs,
+		LabelIDs:    labelIDs,
+	}); err != nil {
 		return nil, err
 	}
 

@@ -1,6 +1,7 @@
 package service
 
 import (
+	"strconv"
 	"testing"
 
 	"github.com/reqmango/backend/internal/common"
@@ -9,6 +10,122 @@ import (
 	"github.com/stretchr/testify/require"
 	"gorm.io/gorm"
 )
+
+func TestCreate_SkipsRequiredWhenHiddenByState(t *testing.T) {
+	db := setupTestDB(t)
+	require.NoError(t, db.AutoMigrate(
+		&model.CustomField{},
+		&model.ConditionalField{},
+		&model.IssueTypeField{},
+		&model.IssueTypeImport{},
+		&model.IssueCustomFieldValue{},
+		&model.IssueActivity{},
+		&model.IssueAssignee{},
+		&model.IssueLabel{},
+		&model.Label{},
+		&model.IssueCycle{},
+		&model.Cycle{},
+		&model.ModuleIssue{},
+		&model.Module{},
+		&model.Webhook{},
+	))
+	wsID, projID, userID := seedTestData(t, db)
+	ensureDefaultIssueState(t, db, projID)
+
+	done := &model.State{Name: "Done", Color: "#22c55e", ProjectID: &projID, WorkspaceID: wsID}
+	require.NoError(t, db.Create(done).Error)
+
+	bugType := &model.IssueType{Name: "Bug", WorkspaceID: wsID}
+	require.NoError(t, db.Create(bugType).Error)
+	fieldName := "预估工时"
+	fieldID := seedRequiredCF(t, db, wsID, bugType.ID, fieldName)
+
+	cfSvc := NewConditionalFieldService(db)
+	_, err := cfSvc.Create(&request.ConditionalFieldCreateRequest{
+		WorkspaceID:     wsID,
+		FieldID:         fieldID,
+		ConditionType:   "state",
+		Operator:        "equals",
+		ConditionValues: []string{strconv.FormatUint(done.ID, 10)},
+		IsEnabled:       true,
+		Priority:        0,
+	})
+	require.NoError(t, err)
+
+	svc := NewIssueService(db, nil, NewWebhookService(db), nil, nil)
+	typeID := bugType.ID
+	stateID := done.ID
+
+	issue, err := svc.Create(&request.IssueCreateRequest{
+		Name:   "hidden required cf skipped",
+		TypeID: &typeID,
+		StateID: &stateID,
+	}, projID, wsID, userID)
+	require.NoError(t, err)
+	require.NotNil(t, issue)
+	require.Equal(t, stateID, issue.StateID)
+
+	var n int64
+	require.NoError(t, db.Model(&model.IssueCustomFieldValue{}).
+		Where("issue_id = ? AND field_id = ?", issue.ID, fieldID).Count(&n).Error)
+	require.Zero(t, n, "no value should be stored when field is hidden")
+}
+
+func TestCreate_StillRequiresWhenVisible(t *testing.T) {
+	db := setupTestDB(t)
+	require.NoError(t, db.AutoMigrate(
+		&model.CustomField{},
+		&model.ConditionalField{},
+		&model.IssueTypeField{},
+		&model.IssueTypeImport{},
+		&model.IssueCustomFieldValue{},
+		&model.IssueActivity{},
+		&model.IssueAssignee{},
+		&model.IssueLabel{},
+		&model.Label{},
+		&model.IssueCycle{},
+		&model.Cycle{},
+		&model.ModuleIssue{},
+		&model.Module{},
+		&model.Webhook{},
+	))
+	wsID, projID, userID := seedTestData(t, db)
+	ensureDefaultIssueState(t, db, projID)
+
+	done := &model.State{Name: "Done", Color: "#22c55e", ProjectID: &projID, WorkspaceID: wsID}
+	require.NoError(t, db.Create(done).Error)
+
+	bugType := &model.IssueType{Name: "Bug", WorkspaceID: wsID}
+	require.NoError(t, db.Create(bugType).Error)
+	fieldName := "预估工时"
+	fieldID := seedRequiredCF(t, db, wsID, bugType.ID, fieldName)
+
+	cfSvc := NewConditionalFieldService(db)
+	_, err := cfSvc.Create(&request.ConditionalFieldCreateRequest{
+		WorkspaceID:     wsID,
+		FieldID:         fieldID,
+		ConditionType:   "state",
+		Operator:        "equals",
+		ConditionValues: []string{strconv.FormatUint(done.ID, 10)},
+		IsEnabled:       true,
+		Priority:        0,
+	})
+	require.NoError(t, err)
+
+	svc := NewIssueService(db, nil, NewWebhookService(db), nil, nil)
+	typeID := bugType.ID
+
+	_, err = svc.Create(&request.IssueCreateRequest{
+		Name:   "visible required cf still enforced",
+		TypeID: &typeID,
+	}, projID, wsID, userID)
+	require.Error(t, err)
+	appErr, ok := err.(*common.AppError)
+	require.True(t, ok, "want *common.AppError, got %T: %v", err, err)
+	require.Equal(t, common.ErrBadRequest, appErr.ErrorCode)
+	require.Contains(t, appErr.Message, "缺少必填字段")
+	require.Contains(t, appErr.Message, fieldName)
+}
 
 func seedRequiredCF(t *testing.T, db *gorm.DB, wsID, typeID uint64, name string) uint64 {
 	t.Helper()
@@ -50,6 +167,7 @@ func TestCreate_RejectsMissingRequiredCustomField(t *testing.T) {
 	db := setupTestDB(t)
 	require.NoError(t, db.AutoMigrate(
 		&model.CustomField{},
+		&model.ConditionalField{},
 		&model.IssueTypeField{},
 		&model.IssueTypeImport{},
 		&model.IssueCustomFieldValue{},
@@ -116,6 +234,7 @@ func TestCreate_WithRequiredCustomFieldValue_Succeeds(t *testing.T) {
 	db := setupTestDB(t)
 	require.NoError(t, db.AutoMigrate(
 		&model.CustomField{},
+		&model.ConditionalField{},
 		&model.IssueTypeField{},
 		&model.IssueTypeImport{},
 		&model.IssueCustomFieldValue{},
@@ -164,6 +283,7 @@ func TestSetIssueValue_RejectsEmptyRequired(t *testing.T) {
 	db := setupTestDB(t)
 	require.NoError(t, db.AutoMigrate(
 		&model.CustomField{},
+		&model.ConditionalField{},
 		&model.IssueTypeField{},
 		&model.IssueTypeImport{},
 		&model.IssueCustomFieldValue{},
@@ -213,6 +333,7 @@ func TestDeleteIssueValue_RejectsRequired(t *testing.T) {
 	db := setupTestDB(t)
 	require.NoError(t, db.AutoMigrate(
 		&model.CustomField{},
+		&model.ConditionalField{},
 		&model.IssueTypeField{},
 		&model.IssueTypeImport{},
 		&model.IssueCustomFieldValue{},
@@ -260,6 +381,7 @@ func TestBulkSetIssueValues_RejectsEmptyRequired(t *testing.T) {
 	db := setupTestDB(t)
 	require.NoError(t, db.AutoMigrate(
 		&model.CustomField{},
+		&model.ConditionalField{},
 		&model.IssueTypeField{},
 		&model.IssueTypeImport{},
 		&model.IssueCustomFieldValue{},
@@ -311,6 +433,7 @@ func TestConvertType_RejectsWhenTargetRequiresMissingCF(t *testing.T) {
 	db := setupTestDB(t)
 	require.NoError(t, db.AutoMigrate(
 		&model.CustomField{},
+		&model.ConditionalField{},
 		&model.IssueTypeField{},
 		&model.IssueTypeImport{},
 		&model.IssueCustomFieldValue{},
@@ -356,6 +479,7 @@ func TestConvertType_WithCustomFieldValues_SatisfiesRequiredAndPersists(t *testi
 	db := setupTestDB(t)
 	require.NoError(t, db.AutoMigrate(
 		&model.CustomField{},
+		&model.ConditionalField{},
 		&model.IssueTypeField{},
 		&model.IssueTypeImport{},
 		&model.IssueCustomFieldValue{},
