@@ -11,7 +11,7 @@
  * - Responsive column hiding
  */
 import { test, expect } from '@playwright/test'
-import { loginPage, resolveDemo, type DemoContext } from './helpers/demo'
+import { createDemoIssue, loginPage, resolveDemo, type DemoContext } from './helpers/demo'
 
 const API = 'http://localhost:8000/api/v1'
 const BASE = 'http://localhost:5173'
@@ -22,10 +22,10 @@ let ISSUE_ID = 0
 async function ensureIssue(request: any) {
   if (ISSUE_ID) return
   demo = await resolveDemo(request)
-  const res = await request.post(
-    `${API}/issues?project_id=${demo.projectId}&workspace_id=${demo.workspaceId}`,
-    { headers: demo.headers, data: { name: `Detail E2E ${Date.now()}`, description: 'acceptance fixture' } },
-  )
+  const res = await createDemoIssue(request, demo, {
+    name: `Detail E2E ${Date.now()}`,
+    description: 'acceptance fixture',
+  })
   expect(res.status()).toBeLessThan(400)
   const body = await res.json()
   ISSUE_ID = body.id || body.data?.id

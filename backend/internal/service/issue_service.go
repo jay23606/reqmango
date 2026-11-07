@@ -2369,8 +2369,27 @@ func (s *IssueService) importItems(projectID, workspaceID, userID uint64, items 
 			warn(row, "parent", fmt.Sprintf("父标题 %q 不在本次导入中，该行将作为顶层工作项", item.ParentTitle))
 		}
 
-		// Mandatory custom fields (type binding): same rule as Create; import has no CF columns yet.
-		if typeID > 0 {
+		// Mandatory custom fields: same rule as Create (including UI default type when type is omitted).
+		effectiveTypeID := typeID
+		if effectiveTypeID == 0 {
+			defaultTypeID, resolveErr := s.resolveProjectDefaultIssueTypeID(projectID, workspaceID)
+			if resolveErr != nil {
+				result.FailCount++
+				msg := resolveErr.Error()
+				var appErr *common.AppError
+				if errors.As(resolveErr, &appErr) && appErr.Message != "" {
+					msg = appErr.Message
+				}
+				result.Errors = append(result.Errors, response.ImportError{
+					Row: row, Title: item.Name, Message: msg,
+				})
+				continue
+			}
+			if defaultTypeID != nil {
+				effectiveTypeID = *defaultTypeID
+			}
+		}
+		if effectiveTypeID > 0 {
 			cfValues := importCustomFieldValues(item)
 			visibilityStateID := stateID
 			if visibilityStateID == 0 {
@@ -2380,9 +2399,9 @@ func (s *IssueService) importItems(projectID, workspaceID, userID uint64, items 
 			if priority == "" {
 				priority = common.PriorityNone
 			}
-			typePtr := typeID
+			typePtr := effectiveTypeID
 			if err := s.validateMandatoryCustomFields(workspaceID, &typePtr, cfValues, fieldVisibilityContext{
-				IssueTypeID: typeID,
+				IssueTypeID: effectiveTypeID,
 				StateID:     visibilityStateID,
 				Priority:    priority,
 				AssigneeIDs: assigneeIDs,

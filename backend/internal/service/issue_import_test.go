@@ -48,7 +48,7 @@ func importTestDB(t *testing.T) *gorm.DB {
 	require.NoError(t, db.AutoMigrate(
 		&model.Project{}, &model.State{}, &model.IssueType{}, &model.IssueTypeImport{}, &model.Label{},
 		&model.User{}, &model.WorkspaceMember{}, &model.ProjectMember{}, &model.Issue{},
-		&model.CustomField{}, &model.IssueTypeField{}, &model.IssueCustomFieldValue{}, &model.IssueActivity{},
+		&model.CustomField{}, &model.ConditionalField{}, &model.IssueTypeField{}, &model.IssueCustomFieldValue{}, &model.IssueActivity{},
 		&model.IssueAssignee{}, &model.IssueLabel{}, &model.IssueCycle{}, &model.Cycle{},
 		&model.ModuleIssue{}, &model.Module{}, &model.Webhook{},
 	))

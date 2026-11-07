@@ -36,14 +36,16 @@ test.describe('Issue CSV import preview', () => {
 
     await page.getByRole('button', { name: /开始导入|Start import/ }).click()
     await expect(page.getByText(/导入结果|Import result/)).toBeVisible({ timeout: 15000 })
+    // Bare name/state rows inherit the project default type; mandatory custom fields block import until CF columns exist.
+    await expect(page.getByText(/缺少必填|必填字段|Mandatory|失败|failed/i)).toBeVisible()
 
     const res = await request.get(
       `${API}/issues?project_id=${demo.projectId}&search=${encodeURIComponent(title)}`,
-      { headers: demo.headers }
+      { headers: demo.headers },
     )
     expect(res.ok()).toBeTruthy()
     const body = await res.json()
     const list = Array.isArray(body) ? body : (body.data || [])
-    expect(list.some((i: any) => i.name === title)).toBeTruthy()
+    expect(list.some((i: any) => i.name === title)).toBeFalsy()
   })
 })
