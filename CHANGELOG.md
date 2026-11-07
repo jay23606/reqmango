@@ -8,6 +8,15 @@ under **Changed** / **Upgrade notes**.
 
 ## [Unreleased]
 
+### Added
+
+- Work-item gap tranche from ROADMAP Next ([PR #32](https://github.com/vinthuy/reqmango/pull/32)):
+  mandatory and conditional custom fields, list/board quick create with
+  `issue:create` gating, type hierarchy rules and admin fields, sub-items panel
+  hardening, issue↔page linking UI, P0 notification auto-triggers, and
+  attachment size/permission/count locks. Specs under `docs/specs/2026-11-06-*`;
+  acceptance notes under `docs/dev/acceptance/`.
+
 ### Changed
 
 - CI moved every GitHub Action to the major that runs on Node 24 natively
