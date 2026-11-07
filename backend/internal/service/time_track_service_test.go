@@ -42,3 +42,35 @@ func TestTimeTrackCreate_AddsToSummary(t *testing.T) {
 	require.Equal(t, 1, sum.EntryCount)
 	require.InDelta(t, 1.0, sum.TotalHours, 0.001)
 }
+
+func TestTimeTrackProjectSummary_AggregatesCompletedEntries(t *testing.T) {
+	db := setupTestDB(t)
+	require.NoError(t, db.AutoMigrate(
+		&model.TimeTrack{}, &model.Issue{}, &model.State{}, &model.IssueType{},
+		&model.IssueTypeImport{}, &model.IssueActivity{}, &model.IssueAssignee{},
+		&model.IssueLabel{}, &model.Label{}, &model.Webhook{},
+		&model.IssueCycle{}, &model.Cycle{}, &model.ModuleIssue{}, &model.Module{},
+		&model.User{},
+	))
+	wsID, projID, userID := seedTestData(t, db)
+	ensureDefaultIssueState(t, db, projID)
+
+	issueSvc := NewIssueService(db, nil, NewWebhookService(db), nil, nil)
+	iss, err := issueSvc.Create(&request.IssueCreateRequest{Name: "project timed"}, projID, wsID, userID)
+	require.NoError(t, err)
+
+	ttSvc := NewTimeTrackService(db)
+	ended := time.Date(2026, 11, 7, 15, 0, 0, 0, time.UTC)
+	_, err = ttSvc.Create(iss.ID, userID, &request.TimeTrackCreateRequest{
+		Duration: 1800,
+		EndedAt:  &ended,
+	})
+	require.NoError(t, err)
+
+	out, err := ttSvc.ProjectSummary(projID)
+	require.NoError(t, err)
+	require.Equal(t, projID, out["project_id"])
+	require.Equal(t, int64(1800), out["total_seconds"])
+	require.Equal(t, 1, out["entry_count"])
+	require.InDelta(t, 0.5, out["total_hours"], 0.001)
+}

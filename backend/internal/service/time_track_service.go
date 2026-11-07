@@ -130,10 +130,11 @@ func (s *TimeTrackService) ProjectSummary(projectID uint64) (map[string]interfac
 		Seconds int64
 		Count   int
 	}
-	s.db.Model(&model.TimeTrack{}).
+	s.db.Table("time_tracks AS t").
 		Select("COALESCE(SUM(t.duration),0) as seconds, COUNT(*) as count").
 		Joins("JOIN issues i ON i.id = t.issue_id").
-		Where("i.project_id = ? AND t.ended_at IS NOT NULL", projectID).Scan(&total)
+		Where("i.project_id = ? AND t.ended_at IS NOT NULL AND t.deleted_at IS NULL", projectID).
+		Scan(&total)
 
 	// Per-user breakdown
 	type userStats struct {
@@ -143,11 +144,11 @@ func (s *TimeTrackService) ProjectSummary(projectID uint64) (map[string]interfac
 		Count    int    `json:"count"`
 	}
 	var userBreakdown []userStats
-	s.db.Model(&model.TimeTrack{}).
+	s.db.Table("time_tracks AS t").
 		Select("t.user_id, u.username, COALESCE(SUM(t.duration),0) as seconds, COUNT(*) as count").
 		Joins("JOIN issues i ON i.id = t.issue_id").
 		Joins("JOIN users u ON u.id = t.user_id").
-		Where("i.project_id = ? AND t.ended_at IS NOT NULL", projectID).
+		Where("i.project_id = ? AND t.ended_at IS NOT NULL AND t.deleted_at IS NULL", projectID).
 		Group("t.user_id, u.username").Order("seconds DESC").Scan(&userBreakdown)
 
 	return map[string]interface{}{

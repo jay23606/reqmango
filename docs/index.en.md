@@ -90,8 +90,8 @@ AI sits on top of project management rather than replacing it. The daily path is
 
 | Entry point | What it is |
 |-------------|------------|
-| [GitHub](https://github.com/vinthuy/reqmango) | International mirror; CI and releases run here |
-| [GitCode](https://gitcode.com/yongfeng9m-/reqmanpy) | Primary hub for Chinese contributors |
+| [GitHub](https://github.com/vinthuy/reqmango) | **Primary**: Issues / PRs / Discussions / CI / Releases |
+| [GitCode](https://gitcode.com/yongfeng9m-/reqmanpy) | Faster clone in China (discussions on GitHub) |
 | [Gitee](https://gitee.com/vinthuy/reqmango) | Read-only mirror, no CI |
 | [Releases](https://github.com/vinthuy/reqmango/releases) | Versions and changelog |
 | [Security](https://github.com/vinthuy/reqmango/blob/master/SECURITY.md) | Private reporting; never a public issue |
