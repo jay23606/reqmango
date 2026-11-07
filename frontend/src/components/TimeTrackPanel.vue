@@ -1,5 +1,10 @@
 <template>
-  <div class="border-t border-gray-100 pt-4 mt-4">
+  <div
+    class="border-t border-gray-100 pt-4 mt-4 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-400 rounded"
+    tabindex="0"
+    data-testid="time-track-panel"
+    @keydown="onRootKeydown"
+  >
     <div class="flex items-center justify-between mb-3">
       <h4 class="text-sm font-semibold text-gray-700">{{ t('timeTrack.title') }}</h4>
       <div class="flex items-center gap-2">
@@ -114,6 +119,18 @@ async function stop() {
   loading.value = true
   try { await ttApi.stopTimer(props.issueId); await load() } catch (_) {}
   finally { loading.value = false }
+}
+
+// Space/Enter toggles start/stop only when the panel root itself has focus.
+// Keys pressed inside the buttons or inputs (target !== currentTarget) are left alone.
+function onRootKeydown(e: KeyboardEvent) {
+  if (e.target !== e.currentTarget) return
+  if (e.key !== ' ' && e.key !== 'Enter') return
+  e.preventDefault()
+  // Ignore auto-repeat from a held key so one press toggles once.
+  if (e.repeat || loading.value) return
+  if (isRunning.value) stop()
+  else start()
 }
 
 async function remove(id: number) {
