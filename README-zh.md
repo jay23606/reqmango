@@ -6,45 +6,34 @@
 [![容器镜像](https://img.shields.io/badge/ghcr.io-reqmango-2496ED?logo=docker&logoColor=white)](https://github.com/vinthuy/reqmango/pkgs/container/reqmango-backend)
 
 **自建项目管理：新需求先分诊，再进待办。**  
-提交后先给出类型、优先级与疑似重复建议，拿不准的才由人决定。
+提交 → 类型 / 优先级 / 疑似重复建议 → 拿不准的才由人决定。AI 嵌在 Issue / Intake / Cycle，数据在自己的机器上。
 
-[English](README.md) · [文档站](https://vinthuy.github.io/reqmango/) · [贡献指南](CONTRIBUTING-zh.md) · [GitCode 国内主场](https://gitcode.com/yongfeng9m-/reqmanpy) · [GitHub 国际镜像](https://github.com/vinthuy/reqmango)
+[English](README.md) · [文档站](https://vinthuy.github.io/reqmango/) · [贡献指南](CONTRIBUTING-zh.md) · [Issues](https://github.com/vinthuy/reqmango/issues) · [GitCode 镜像](https://gitcode.com/yongfeng9m-/reqmanpy)
+
+![分诊队列](docs/assets/screenshot-02-triage-queue.png)
+
+<sub>Intake 表单 → 分诊队列：接受 / 拒绝之后才进待办。</sub>
 
 ---
 
-## 快速试用
-
-预构建多架构镜像（`linux/amd64`、`linux/arm64`），最快：
+## 快速试用（约 2 分钟）
 
 ```bash
-# 国内推荐 GitCode 主场
-git clone https://gitcode.com/yongfeng9m-/reqmanpy.git reqmango
-# 国际镜像: git clone https://github.com/vinthuy/reqmango.git
-cd reqmango
-cp .env.example .env
-docker compose pull
-docker compose up -d
+git clone https://github.com/vinthuy/reqmango.git && cd reqmango
+# 国内加速克隆：git clone https://gitcode.com/yongfeng9m-/reqmanpy.git reqmango && cd reqmango
+cp .env.example .env && docker compose pull && docker compose up -d
 ```
 
-或者在本地构建两个镜像（冷缓存需要几分钟）：
-
-```bash
-docker compose up --build
-```
-
-**首次启动：** 请等两个服务都就绪后再打开页面；前端镜像启动期间页面短暂空白
-并不代表启动失败。`curl localhost/version` 可以确认当前运行的版本。
-
-浏览器打开 **http://localhost**，登录：
+等两个容器 healthy 后打开 **http://localhost** —
 
 | | |
 |---|---|
 | 邮箱 | `demo@example.com` |
 | 密码 | `demo1234` |
 
-可选 AI（Intake 分诊 / 分析 / 标签建议）：在 `.env` 中设置 `AI_API_KEY` 后重启。
+可选 AI（分诊 / 分析 / 标签）：在 `.env` 设置 `AI_API_KEY` 后再次 `docker compose up -d`。
 
-![需求分诊队列](docs/assets/screenshot-02-triage-queue.png)
+也可用 `docker compose up --build` 本地构建（冷缓存几分钟）。`curl localhost/version` 可看当前版本。
 
 <table>
   <tr>
@@ -188,7 +177,7 @@ reqmango/
 - [行为准则](CODE_OF_CONDUCT.md) — Contributor Covenant 2.1
 - [适合新手的任务清单](docs/dev/good-first-issues.md)
 - [安全策略](SECURITY.md) — 漏洞请走私密渠道，不要开公开 Issue
-- **国内共建主场：** [GitCode](https://gitcode.com/yongfeng9m-/reqmanpy) · **国际镜像：** [GitHub](https://github.com/vinthuy/reqmango) — 同一套源码与产品叙事（[双远程说明](docs/dev/dual-remote.md)）
+- **GitHub** 是协作主战场 · [GitCode](https://gitcode.com/yongfeng9m-/reqmanpy) 仅作克隆镜像（[双远程说明](docs/dev/dual-remote.md)）
 
 ## License
 

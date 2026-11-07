@@ -4,38 +4,29 @@ Thanks for helping. Reqmango is a **self-hosted project management** app: new re
 
 [中文版](CONTRIBUTING-zh.md)
 
-## Dual remotes (same product)
+## Where to collaborate
 
 | | URL | Role |
 |---|---|---|
-| **GitCode (primary for CN)** | https://gitcode.com/yongfeng9m-/reqmanpy | Day-to-day Issues / PRs in Chinese |
-| **GitHub (international mirror)** | https://github.com/vinthuy/reqmango | Discovery abroad; keep in sync with primary |
+| **GitHub (primary)** | https://github.com/vinthuy/reqmango | Issues, PRs, Discussions, Releases |
+| **GitCode (mirror)** | https://gitcode.com/yongfeng9m-/reqmanpy | Faster clone in China — not for day-to-day Issues/PRs |
 
-One codebase, **one product sentence**. Do not treat the mirrors as different products. Maintainer sync: [docs/dev/dual-remote.md](docs/dev/dual-remote.md).
+One codebase, **one product sentence**. Open contributions on GitHub only. Maintainer sync: [docs/dev/dual-remote.md](docs/dev/dual-remote.md).
 
 ## Before you start
 
 1. Read the product one-liner in [README.md](README.md).
 2. Prefer a **small, focused PR** over a large rewrite.
-3. Check open issues on the host you use, plus [good first issues](docs/dev/good-first-issues.md).
-4. Optional DX check after i18n work: `cd frontend && node scripts/scan-missing-i18n-keys.mjs`
+3. Check open [GitHub issues](https://github.com/vinthuy/reqmango/issues) plus [good first issues](docs/dev/good-first-issues.md).
+4. Optional DX check after i18n work: `cd frontend && npm run i18n:check`
 
 ## Quick setup
 
 ### Docker (recommended)
 
 ```bash
-# International mirror
 git clone https://github.com/vinthuy/reqmango.git
-cd reqmango
-cp .env.example .env
-docker compose up --build
-```
-
-Contributors in China may prefer:
-
-```bash
-git clone https://gitcode.com/yongfeng9m-/reqmanpy.git reqmango
+# China (clone only): git clone https://gitcode.com/yongfeng9m-/reqmanpy.git reqmango
 cd reqmango
 cp .env.example .env
 docker compose up --build
@@ -72,13 +63,13 @@ Keep **zh-CN and en-US in sync** when you add UI strings. Prefer `t('namespace.k
 
 ## Development workflow
 
-1. Fork the host you contribute on (GitCode for CN, GitHub for international) and branch from `master`.
+1. Fork **GitHub** and branch from `master`.
 2. Make the change; keep scope to the issue.
 3. Verify locally:
    - Frontend: `cd frontend && npx vitest run` (and `npx vue-tsc --noEmit` if you touched types)
    - Backend: `cd backend && go test ./internal/...`
    - Manual: reproduce the bug or walk the happy path once
-4. Open a PR using the template. Link the issue. Maintainers sync both remotes.
+4. Open a **GitHub** PR using the template. Link the issue.
 
 CI (`.github/workflows/ci.yml`) runs lint, Go tests, frontend tests, and e2e — PRs should stay green.
 

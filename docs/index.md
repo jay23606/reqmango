@@ -86,8 +86,8 @@ AI 是项目管理之上的一层，不是默认主线。日常路径是 Issue�
 
 | 入口 | 说明 |
 |------|------|
-| [GitHub](https://github.com/vinthuy/reqmango) | 国际镜像，CI 与 Release 在这里跑 |
-| [GitCode](https://gitcode.com/yongfeng9m-/reqmanpy) | 国内共建主场，中文讨论与 PR |
+| [GitHub](https://github.com/vinthuy/reqmango) | **主战场**：Issue / PR / Discussions / CI / Release |
+| [GitCode](https://gitcode.com/yongfeng9m-/reqmanpy) | 国内加速克隆镜像（讨论请到 GitHub） |
 | [Gitee](https://gitee.com/vinthuy/reqmango) | 只读镜像，无 CI |
 | [Releases](https://github.com/vinthuy/reqmango/releases) | 版本与变更日志 |
 | [安全问题](https://github.com/vinthuy/reqmango/blob/master/SECURITY.md) | 私密上报，不要开公开 Issue |

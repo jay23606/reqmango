@@ -4,37 +4,28 @@
 
 [English](CONTRIBUTING.md)
 
-## 国内共建主场 / 国际镜像
+## 协作入口
 
 | | 地址 | 用途 |
 |---|---|---|
-| **GitCode（主场）** | https://gitcode.com/yongfeng9m-/reqmanpy | 中文 Issue / PR、日常讨论 |
-| **GitHub（镜像）** | https://github.com/vinthuy/reqmango | 国际可见度；与主场同一套源码与叙事 |
+| **GitHub（主战场）** | https://github.com/vinthuy/reqmango | Issue / PR / Discussions / Release |
+| **GitCode（镜像）** | https://gitcode.com/yongfeng9m-/reqmanpy | 国内加速克隆；**日常 Issue/PR 请到 GitHub** |
 
-两套仓库**不是**两个产品。请只认上面这一句定位。
+两套仓库**不是**两个产品。讨论与贡献统一到 GitHub。同步说明：[dual-remote.md](docs/dev/dual-remote.md)。
 
 ## 开始之前
 
 1. 先读 [README-zh.md](README-zh.md) 的一句话定位。
 2. **小步 PR**，避免一次性大重构。
-3. 先看主场 Issues，并参考 [good first issues 清单](docs/dev/good-first-issues.md)，避免重复开工。
+3. 先看 [GitHub Issues](https://github.com/vinthuy/reqmango/issues)，并参考 [good first issues 清单](docs/dev/good-first-issues.md)，避免重复开工。
 
 ## 快速环境
 
 ### Docker（推荐）
 
 ```bash
-# 国内推荐从 GitCode 克隆
-git clone https://gitcode.com/yongfeng9m-/reqmanpy.git reqmango
-cd reqmango
-cp .env.example .env
-docker compose up --build
-```
-
-国际镜像：
-
-```bash
 git clone https://github.com/vinthuy/reqmango.git
+# 国内仅克隆可走镜像：git clone https://gitcode.com/yongfeng9m-/reqmanpy.git reqmango
 cd reqmango
 cp .env.example .env
 docker compose up --build
@@ -70,7 +61,7 @@ E2E 套件用演示账号登录，所以本地后端需要在 `backend/.env` 里
 
 ## 流程
 
-1. Fork **GitCode 主场**（国内）或 GitHub 镜像（国际），从 `master` 拉分支。
+1. Fork **GitHub**，从 `master` 拉分支。
 2. 只做与 Issue 相关的改动。
 3. 本地验证：
    - 前端：`cd frontend && npx vitest run`（动到类型时再跑 `npx vue-tsc --noEmit`）
@@ -81,7 +72,7 @@ E2E 套件用演示账号登录，所以本地后端需要在 `backend/.env` 里
 E2E 必须使用临时 PostgreSQL 数据库，不要连接生产环境：测试会创建账户并修改种子数据。Intake fixture 会删除工作区，但注册账户保留到测试库被丢弃；CI 会在每个任务结束后丢弃数据库。
    - 后端：`cd backend && go test ./internal/...`
    - 手动走一遍复现路径或主流程
-4. 按 PR 模板提 PR，并关联 Issue（优先提到你克隆的那一侧；维护者会同步双远程）。
+4. 在 **GitHub** 按 PR 模板提 PR，并关联 Issue。
 
 CI 见 `.github/workflows/ci.yml`，请保持绿色。
 

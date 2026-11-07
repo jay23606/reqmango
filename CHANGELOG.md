@@ -8,6 +8,8 @@ under **Changed** / **Upgrade notes**.
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-11-07
+
 ### Added
 
 - Time tracking & estimate points P0: persist `estimate_point_id` on issues, project Estimate settings UI, manual time log (seconds), `time_track:*` / `settings:manage` enforcement, CSV estimate import mapping (`docs/specs/2026-11-07-time-tracking-estimates.md`).
@@ -20,6 +22,9 @@ under **Changed** / **Upgrade notes**.
   acceptance notes under `docs/dev/acceptance/`.
 
 ### Changed
+
+- Collaboration hub is **GitHub** (Issues / PRs / Discussions). GitCode remains a
+  clone mirror for CN networks — see [docs/dev/dual-remote.md](docs/dev/dual-remote.md).
 
 - CI moved every GitHub Action to the major that runs on Node 24 natively
   (`checkout@v7`, `setup-go@v7`, `setup-node@v7`, `setup-python@v7`,
@@ -148,5 +153,6 @@ triage, issue analysis, label suggestions and cycle summaries.
   `ghcr.io/vinthuy/reqmango-frontend`, multi-arch (`linux/amd64`,
   `linux/arm64`).
 
-[Unreleased]: https://github.com/vinthuy/reqmango/compare/v0.1.0...master
+[Unreleased]: https://github.com/vinthuy/reqmango/compare/v0.2.0...master
+[0.2.0]: https://github.com/vinthuy/reqmango/releases/tag/v0.2.0
 [0.1.0]: https://github.com/vinthuy/reqmango/releases/tag/v0.1.0

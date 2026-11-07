@@ -6,45 +6,34 @@
 [![Container images](https://img.shields.io/badge/ghcr.io-reqmango-2496ED?logo=docker&logoColor=white)](https://github.com/vinthuy/reqmango/pkgs/container/reqmango-backend)
 
 **Self-hosted project management where new requests are triaged first.**  
-Type, priority, and likely duplicates are suggested before work lands in the backlog — you only decide the uncertain ones.
+Submit → type / priority / duplicate hints → you only decide the uncertain ones. AI stays inside Issue / Intake / Cycle; your data stays on your machine.
 
-[中文文档](README-zh.md) · [Docs site](https://vinthuy.github.io/reqmango/) · [Contributing](CONTRIBUTING.md) · [国内共建主场 GitCode](https://gitcode.com/yongfeng9m-/reqmanpy) · [GitHub mirror](https://github.com/vinthuy/reqmango)
+[中文文档](README-zh.md) · [Docs](https://vinthuy.github.io/reqmango/) · [Contributing](CONTRIBUTING.md) · [Issues](https://github.com/vinthuy/reqmango/issues) · [GitCode mirror](https://gitcode.com/yongfeng9m-/reqmanpy)
+
+![Triage queue](docs/assets/screenshot-02-triage-queue.png)
+
+<sub>Intake form → triage queue: accept / reject before anything hits the backlog.</sub>
 
 ---
 
-## Try it
-
-Prebuilt multi-arch images (`linux/amd64`, `linux/arm64`) — fastest:
+## Try it (≈2 minutes)
 
 ```bash
-git clone https://github.com/vinthuy/reqmango.git
-# China: git clone https://gitcode.com/yongfeng9m-/reqmanpy.git reqmango
-cd reqmango
-cp .env.example .env
-docker compose pull
-docker compose up -d
+git clone https://github.com/vinthuy/reqmango.git && cd reqmango
+# China clone mirror: git clone https://gitcode.com/yongfeng9m-/reqmanpy.git reqmango && cd reqmango
+cp .env.example .env && docker compose pull && docker compose up -d
 ```
 
-Or build both images locally (several minutes on a cold cache):
-
-```bash
-docker compose up --build
-```
-
-**First run:** wait for both services to be healthy before opening the app; a
-temporary blank page while the frontend image is still starting does not mean
-startup failed. `curl localhost/version` answers which build is running.
-
-Open **http://localhost** and sign in:
+Wait until both containers are healthy, then open **http://localhost** —
 
 | | |
 |---|---|
 | Email | `demo@example.com` |
 | Password | `demo1234` |
 
-Optional AI (Intake triage / analyze / labels): set `AI_API_KEY` in `.env`, then restart.
+Optional AI (Intake triage / analyze / labels): set `AI_API_KEY` in `.env`, then `docker compose up -d` again.
 
-![Triage queue](docs/assets/screenshot-02-triage-queue.png)
+Cold `docker compose up --build` also works (several minutes). `curl localhost/version` shows which build is running.
 
 <table>
   <tr>
@@ -192,7 +181,7 @@ We welcome Issues and Pull Requests — especially small, focused changes.
 - [Code of Conduct](CODE_OF_CONDUCT.md) — Contributor Covenant 2.1
 - [Good first issues](docs/dev/good-first-issues.md) (curated starter tasks)
 - [Security policy](SECURITY.md) — report vulnerabilities privately, never in a public issue
-- **CN collaboration hub:** [GitCode](https://gitcode.com/yongfeng9m-/reqmanpy) · **International mirror:** [GitHub](https://github.com/vinthuy/reqmango) — same code, same product story ([dual-remote](docs/dev/dual-remote.md))
+- **GitHub** is the collaboration home · [GitCode](https://gitcode.com/yongfeng9m-/reqmanpy) is a clone mirror ([dual-remote](docs/dev/dual-remote.md))
 
 ## License
 

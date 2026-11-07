@@ -2,7 +2,7 @@
 
 Starter tasks for new contributors. Each item is sized for roughly **0.5–3 hours**.
 
-**How to claim:** Prefer opening the task on **GitCode** (CN hub). International contributors may use GitHub. Put the ID in the title (e.g. `[good first] GFI-03 TriagePanel i18n`) and comment that you are working on it. One claim per person at a time. Maintainers keep both remotes in sync — see [dual-remote.md](./dual-remote.md).
+**How to claim:** Open or claim the task on **GitHub** (primary). Put the ID in the title (e.g. `[good first] GFI-03 TriagePanel i18n`) and comment that you are working on it. One claim per person at a time. See [dual-remote.md](./dual-remote.md).
 
 **Product north star:** self-hosted PM — triage before backlog; AI inside Issue / Intake / Cycle. Prefer these paths over Agent-console sprawl.
 
