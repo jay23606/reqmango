@@ -57,6 +57,7 @@
               <span v-if="type.is_default" class="badge badge-default">{{ t('issueTypePage.default') }}</span>
               <span v-if="!type.is_active" class="badge badge-inactive">{{ t('issueTypePage.disabled') }}</span>
               <span v-if="type.parent_type_id" class="badge badge-parent">{{ t('issueTypePage.parentConstraint') }}</span>
+              <span v-if="type.allowed_child_type_ids?.length" class="badge badge-child">{{ t('issueTypePage.childConstraint') }}</span>
             </div>
             <p v-if="type.description" class="type-description">{{ type.description }}</p>
           </div>
@@ -149,6 +150,8 @@
                     <h3 class="type-name">{{ formData.name || t('issueTypePage.unnamed') }}</h3>
                     <div class="type-badges">
                       <span class="badge badge-level">L{{ formData.level || 0 }}</span>
+                      <span v-if="formData.parent_type_id" class="badge badge-parent">{{ t('issueTypePage.parentConstraint') }}</span>
+                      <span v-if="(formData.allowed_child_type_ids || []).length" class="badge badge-child">{{ t('issueTypePage.childConstraint') }}</span>
                       <span v-if="formData.is_default" class="badge badge-default">{{ t('issueTypePage.default') }}</span>
                     </div>
                   </div>
@@ -239,11 +242,35 @@
               <label class="form-label">{{ t('issueTypePage.parentType') }}</label>
               <select v-model="formData.parent_type_id" class="form-input">
                 <option :value="undefined">{{ t('issueTypePage.noConstraint') }}</option>
-                <option v-for="t in parentTypeOptions" :key="t.id" :value="t.id">
-                  {{ t.name }} (L{{ t.level }})
+                <option v-for="pt in parentTypeOptions" :key="pt.id" :value="pt.id">
+                  {{ pt.name }} (L{{ pt.level }})
                 </option>
               </select>
               <p class="text-xs text-gray-500 mt-1">{{ t('issueTypePage.parentHint') }}</p>
+            </div>
+
+            <div v-if="(formData.level ?? 0) < 5" class="form-group">
+              <label class="form-label">{{ t('issueTypePage.allowedChildTypes') }}</label>
+              <p class="text-xs text-gray-500 mb-2">{{ t('issueTypePage.allowedChildHint') }}</p>
+              <div v-if="childTypeOptions.length === 0" class="text-xs text-gray-400 border border-dashed border-gray-300 rounded-lg p-3 text-center">
+                {{ t('issueTypePage.allowedChildNoOptions') }}
+              </div>
+              <div v-else class="max-h-40 overflow-y-auto space-y-2 border border-gray-200 rounded-lg p-2 bg-gray-50">
+                <label
+                  v-for="ct in childTypeOptions"
+                  :key="ct.id"
+                  class="flex items-center space-x-2 text-sm text-gray-700 cursor-pointer py-0.5"
+                >
+                  <input
+                    type="checkbox"
+                    class="checkbox"
+                    :checked="allowedChildIdSet.has(ct.id)"
+                    @change="toggleAllowedChild(ct.id)"
+                  />
+                  <span>{{ ct.name }} <span class="text-gray-400 font-mono text-xs">(L{{ ct.level ?? 0 }})</span></span>
+                </label>
+              </div>
+              <p v-if="(formData.allowed_child_type_ids || []).length === 0" class="text-xs text-gray-500 mt-1">{{ t('issueTypePage.allowedChildEmpty') }}</p>
             </div>
 
             <div class="form-group">
@@ -300,7 +327,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import type { IssueType, IssueTypeCreate, IssueTypeUpdate, IssueTypeField } from '@/types/issue-type'
 import type { CustomField } from '@/types/custom-field'
@@ -346,6 +373,7 @@ const formData = ref<IssueTypeCreate & IssueTypeUpdate>({
   description: '',
   level: 0,
   parent_type_id: undefined,
+  allowed_child_type_ids: [],
   is_default: false,
   sequence: 1
 })
@@ -354,8 +382,43 @@ const formData = ref<IssueTypeCreate & IssueTypeUpdate>({
 const parentTypeOptions = computed(() => {
   const targetLevel = (formData.value.level || 0) - 1
   if (targetLevel < 0) return []
-  return issueTypes.value.filter(t => (t.level || 0) === targetLevel)
+  const sid = selectedType.value?.id
+  return issueTypes.value.filter(t => (t.level || 0) === targetLevel && t.id !== sid)
 })
+
+/** Deeper types than current form level (for allowed_child_type_ids); exclude self when editing. */
+const childTypeOptions = computed(() => {
+  const myLevel = formData.value.level ?? 0
+  const sid = selectedType.value?.id
+  return issueTypes.value.filter(t => {
+    if (sid != null && t.id === sid) return false
+    return (t.level ?? 0) > myLevel
+  })
+})
+
+const allowedChildIdSet = computed(() => new Set(formData.value.allowed_child_type_ids || []))
+
+function toggleAllowedChild(typeId: number) {
+  const cur = [...(formData.value.allowed_child_type_ids || [])]
+  const i = cur.indexOf(typeId)
+  if (i >= 0) cur.splice(i, 1)
+  else cur.push(typeId)
+  formData.value.allowed_child_type_ids = cur
+}
+
+watch(
+  () => [formData.value.level, selectedType.value?.id, issueTypes.value.map(t => t.id).join(',')] as const,
+  () => {
+    if ((formData.value.level || 0) === 0) formData.value.parent_type_id = undefined
+    const validParent = new Set(parentTypeOptions.value.map(t => t.id))
+    const pid = formData.value.parent_type_id
+    if (pid != null && !validParent.has(pid)) formData.value.parent_type_id = undefined
+    const validChild = new Set(childTypeOptions.value.map(t => t.id))
+    const allowed = formData.value.allowed_child_type_ids || []
+    const next = allowed.filter(id => validChild.has(id))
+    if (next.length !== allowed.length) formData.value.allowed_child_type_ids = next
+  }
+)
 
 // 加载数据
 async function loadData() {
@@ -380,6 +443,7 @@ function openCreateModal() {
     description: '',
     level: 0,
     parent_type_id: undefined,
+    allowed_child_type_ids: [],
     is_default: false,
     sequence: issueTypes.value.length + 1
   }
@@ -397,6 +461,7 @@ async function openEditModal(type: IssueType) {
     description: type.description || '',
     level: type.level || 0,
     parent_type_id: type.parent_type_id || undefined,
+    allowed_child_type_ids: type.allowed_child_type_ids ? [...type.allowed_child_type_ids] : [],
     is_default: type.is_default,
     sequence: type.sequence
   }
@@ -487,14 +552,24 @@ function closeDrawer() {
 }
 
 // 提交表单
+function payloadForApi(): IssueTypeCreate & IssueTypeUpdate {
+  const fd = formData.value
+  const allowed = fd.allowed_child_type_ids || []
+  return {
+    ...fd,
+    parent_type_id: (fd.level || 0) > 0 ? fd.parent_type_id : undefined,
+    allowed_child_type_ids: [...allowed],
+  }
+}
+
 async function submitForm() {
   if (!formData.value.name) return
 
   try {
     if (isCreating.value) {
-      await issueTypeApi.createIssueType(workspaceId.value, formData.value)
+      await issueTypeApi.createIssueType(workspaceId.value, payloadForApi())
     } else if (selectedType.value) {
-      await issueTypeApi.updateIssueType(selectedType.value.id, formData.value)
+      await issueTypeApi.updateIssueType(selectedType.value.id, payloadForApi())
     }
     closeDrawer()
     await loadData()
@@ -623,6 +698,10 @@ onMounted(async () => {
 
 .badge-parent {
   @apply bg-yellow-100 text-yellow-700;
+}
+
+.badge-child {
+  @apply bg-purple-100 text-purple-700;
 }
 
 .type-actions {

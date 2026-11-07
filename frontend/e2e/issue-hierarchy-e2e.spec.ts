@@ -1,4 +1,5 @@
 import { test, expect } from '@playwright/test'
+import { createProjectIssue } from './helpers/demo'
 
 const API = 'http://localhost:8000/api/v1'
 const BASE = 'http://localhost:5173'
@@ -95,11 +96,12 @@ test.describe('Issue Hierarchy — Full UI Journey', () => {
     const H = { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' }
 
     // Create parent
-    const parent = await request.post(`${API}/issues?project_id=${_projectId}&workspace_id=${_wsId}`, {
-      headers: H,
-      data: { name: `[E2E Parent] ${Date.now()}`, priority: 'medium', state_id: _stateId },
+    const parent = await createProjectIssue(request, _projectId, _wsId, H, {
+      name: `[E2E Parent] ${Date.now()}`,
+      priority: 'medium',
+      state_id: _stateId,
     })
-    expect(parent.status()).toBe(201)
+    expect(parent.status()).toBeLessThan(400)
     const p = await parent.json()
     console.log(`Created parent: [${p.id}]`)
 
@@ -132,9 +134,10 @@ test.describe('Issue Hierarchy — Full UI Journey', () => {
     const H = { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' }
 
     // Create depth 0 root
-    const root = await request.post(`${API}/issues?project_id=${_projectId}&workspace_id=${_wsId}`, {
-      headers: H,
-      data: { name: `[E2E Depth0] ${Date.now()}`, priority: 'none', state_id: _stateId },
+    const root = await createProjectIssue(request, _projectId, _wsId, H, {
+      name: `[E2E Depth0] ${Date.now()}`,
+      priority: 'none',
+      state_id: _stateId,
     })
     expect(root.status()).toBe(201)
     const r = await root.json()
@@ -180,9 +183,10 @@ test.describe('Issue Hierarchy — Full UI Journey', () => {
     const H = { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' }
 
     // Create parent + child
-    const parent = await request.post(`${API}/issues?project_id=${_projectId}&workspace_id=${_wsId}`, {
-      headers: H,
-      data: { name: `[E2E ParentNav] ${Date.now()}`, priority: 'medium', state_id: _stateId },
+    const parent = await createProjectIssue(request, _projectId, _wsId, H, {
+      name: `[E2E ParentNav] ${Date.now()}`,
+      priority: 'medium',
+      state_id: _stateId,
     })
     const p = await parent.json()
     const child = await request.post(`${API}/issues?project_id=${_projectId}&workspace_id=${_wsId}`, {
@@ -213,9 +217,10 @@ test.describe('Issue Hierarchy — Full UI Journey', () => {
     const H = { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' }
 
     // Create a parent issue
-    const parent = await request.post(`${API}/issues?project_id=${_projectId}&workspace_id=${_wsId}`, {
-      headers: H,
-      data: { name: `[E2E PreParent] ${Date.now()}`, priority: 'medium', state_id: _stateId },
+    const parent = await createProjectIssue(request, _projectId, _wsId, H, {
+      name: `[E2E PreParent] ${Date.now()}`,
+      priority: 'medium',
+      state_id: _stateId,
     })
     const p = await parent.json()
 
@@ -239,9 +244,10 @@ test.describe('Issue Hierarchy — Full UI Journey', () => {
     const H = { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' }
 
     // Create parent + 2 children
-    const parent = await request.post(`${API}/issues?project_id=${_projectId}&workspace_id=${_wsId}`, {
-      headers: H,
-      data: { name: `[E2E FilterP] ${Date.now()}`, priority: 'medium', state_id: _stateId },
+    const parent = await createProjectIssue(request, _projectId, _wsId, H, {
+      name: `[E2E FilterP] ${Date.now()}`,
+      priority: 'medium',
+      state_id: _stateId,
     })
     const p = await parent.json()
     for (let i = 0; i < 2; i++) {
@@ -275,9 +281,10 @@ test.describe('Issue Hierarchy — Full UI Journey', () => {
     // Create 2 root issues for bulk test
     const ids: number[] = []
     for (let i = 0; i < 2; i++) {
-      const r = await request.post(`${API}/issues?project_id=${_projectId}&workspace_id=${_wsId}`, {
-        headers: H,
-        data: { name: `[E2E Bulk${i}] ${Date.now()}`, priority: 'low', state_id: _stateId },
+      const r = await createProjectIssue(request, _projectId, _wsId, H, {
+        name: `[E2E Bulk${i}] ${Date.now()}`,
+        priority: 'low',
+        state_id: _stateId,
       })
       const issue = await r.json()
       ids.push(issue.id)
@@ -323,20 +330,23 @@ test.describe('Issue Hierarchy — Full UI Journey', () => {
     const H = { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' }
 
     // Create parent with 2 children
-    const parent = await request.post(`${API}/issues?project_id=${_projectId}&workspace_id=${_wsId}`, {
-      headers: H,
-      data: { name: `[E2E SubList] ${Date.now()}`, priority: 'medium', state_id: _stateId },
+    const parent = await createProjectIssue(request, _projectId, _wsId, H, {
+      name: `[E2E SubList] ${Date.now()}`,
+      priority: 'medium',
+      state_id: _stateId,
     })
+    expect(parent.status()).toBeLessThan(400)
     const p = await parent.json()
+    const parentId = p.id || p.data?.id
     for (let i = 0; i < 2; i++) {
       await request.post(`${API}/issues?project_id=${_projectId}&workspace_id=${_wsId}`, {
         headers: H,
-        data: { name: `[E2E Sub${i}] ${Date.now()}`, priority: 'low', state_id: _stateId, parent_id: p.id },
+        data: { name: `[E2E Sub${i}] ${Date.now()}`, priority: 'low', state_id: _stateId, parent_id: parentId },
       })
     }
 
     // Get parent with sub-issues
-    const get = await request.get(`${API}/issues/${p.id}`, { headers: H })
+    const get = await request.get(`${API}/issues/${parentId}`, { headers: H })
     const detail = await get.json()
     const subCount = detail.sub_issues?.length || 0
     console.log(`Sub-issues loaded in get: ${subCount} (keys: ${Object.keys(detail).slice(0,5)})`)

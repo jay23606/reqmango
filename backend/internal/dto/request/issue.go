@@ -80,7 +80,8 @@ type BulkMoveRequest struct {
 
 // ConvertTypeRequest is the request body for converting issue type.
 type ConvertTypeRequest struct {
-	TargetTypeID uint64 `json:"target_type_id" binding:"required"`
+	TargetTypeID      uint64                 `json:"target_type_id" binding:"required"`
+	CustomFieldValues map[uint64]interface{} `json:"custom_field_values"`
 }
 
 // MergeDuplicatesRequest is the request body for merging duplicate issues.

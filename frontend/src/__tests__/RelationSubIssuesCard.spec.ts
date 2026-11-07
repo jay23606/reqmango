@@ -109,5 +109,38 @@ describe('RelationSubIssuesCard', () => {
   it('shows empty state when no sub-issues', () => {
     const wrapper = mountCard({ subIssues: [] })
     expect(wrapper.text()).toContain('subIssue.noSubIssues')
+    expect(wrapper.text()).toContain('subIssue.emptyHint')
+  })
+
+  it('shows sub-item count 0 in header when list is empty', () => {
+    const wrapper = mountCard({ subIssues: [] })
+    const badge = wrapper.find('[data-test="subissue-count-badge"]')
+    expect(badge.exists()).toBe(true)
+    expect(badge.text()).toBe('0')
+  })
+
+  it('empty state shows quick-create and add-existing CTAs', () => {
+    const wrapper = mountCard({ subIssues: [] })
+    expect(wrapper.find('[data-test="empty-quick-create-subissue"]').exists()).toBe(true)
+    expect(wrapper.find('[data-test="empty-add-existing-subissue"]').exists()).toBe(true)
+  })
+
+  it('hides add dropdown when both quick-create and link-existing are denied', () => {
+    const wrapper = mountCard({ subIssues: [], canQuickCreate: false, canLinkExisting: false })
+    expect(wrapper.find('[data-test="add-subissue"]').exists()).toBe(false)
+    expect(wrapper.find('[data-test="empty-quick-create-subissue"]').exists()).toBe(false)
+    expect(wrapper.find('[data-test="empty-add-existing-subissue"]').exists()).toBe(false)
+  })
+
+  it('shows hierarchy error banner and dismiss emits', async () => {
+    const wrapper = mountCard({
+      subIssues: [],
+      hierarchyError: 'Maximum hierarchy depth (6 levels) exceeded',
+    })
+    const banner = wrapper.find('[data-test="subissue-hierarchy-error"]')
+    expect(banner.exists()).toBe(true)
+    expect(banner.text()).toContain('Maximum hierarchy depth')
+    await wrapper.find('button[aria-label="common.close"]').trigger('click')
+    expect(wrapper.emitted('dismiss-hierarchy-error')).toBeTruthy()
   })
 })

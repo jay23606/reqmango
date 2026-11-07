@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test'
-import { loginPage, resolveDemo } from './helpers/demo'
+import { createDemoIssue, loginPage, resolveDemo } from './helpers/demo'
 
 const API = 'http://localhost:8000/api/v1'
 const BASE = 'http://localhost:5173'
@@ -93,10 +93,10 @@ test.describe('Custom Fields — Full UI Journey', () => {
     })
     const field = await create.json()
 
-    const issueRes = await request.post(
-      `${API}/issues?project_id=${demo.projectId}&workspace_id=${demo.workspaceId}`,
-      { headers: demo.headers, data: { name: `CF05 issue ${Date.now()}`, description: 'e2e' } },
-    )
+    const issueRes = await createDemoIssue(request, demo, {
+      name: `CF05 issue ${Date.now()}`,
+      description: 'e2e',
+    })
     expect(issueRes.status()).toBeLessThan(400)
     const issue = await issueRes.json()
     const issueId = issue.id || issue.data?.id
@@ -145,10 +145,10 @@ test.describe('Custom Fields — Full UI Journey', () => {
 
   test('CF06: Issue detail page renders with custom fields', async ({ page, request }) => {
     const demo = await resolveDemo(request)
-    const issueRes = await request.post(
-      `${API}/issues?project_id=${demo.projectId}&workspace_id=${demo.workspaceId}`,
-      { headers: demo.headers, data: { name: `CF06 issue ${Date.now()}`, description: 'e2e' } },
-    )
+    const issueRes = await createDemoIssue(request, demo, {
+      name: `CF06 issue ${Date.now()}`,
+      description: 'e2e',
+    })
     const issue = await issueRes.json()
     const issueId = issue.id || issue.data?.id
 

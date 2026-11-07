@@ -206,17 +206,17 @@
       </div>
 
       <!-- Custom fields -->
-      <template v-if="customFields.length">
+      <template v-if="visibleCustomFields.length">
         <p class="pt-2 pb-1 text-[10px] font-semibold text-gray-400 uppercase tracking-wide border-t border-gray-100 mt-1">{{ t('issue.customFields') }}</p>
         <div
-          v-for="cf in customFields"
+          v-for="cf in visibleCustomFields"
           :key="cf.field.id"
           class="prop-row"
           :class="{ 'pointer-events-none opacity-60': isLocked && cf.field.field_type !== 'boolean' }"
         >
           <label class="prop-label">
             {{ cf.field.name }}
-            <span v-if="cf.field.is_required" class="text-red-500">*</span>
+            <span v-if="isFieldRequiredVisible(cf)" class="text-red-500">*</span>
           </label>
           <div class="prop-control">
             <input
@@ -225,7 +225,7 @@
               class="prop-input"
               :value="cf.value ?? ''"
               :disabled="isLocked"
-              @change="(e: Event) => emitCustomFieldUpdate(cf.field.id, (e.target as HTMLInputElement).value)"
+              @change="(e: Event) => attemptCustomFieldUpdate(cf, (e.target as HTMLInputElement).value)"
             />
             <input
               v-else-if="cf.field.field_type === 'number'"
@@ -233,7 +233,7 @@
               class="prop-input"
               :value="cf.value ?? ''"
               :disabled="isLocked"
-              @change="(e: Event) => emitCustomFieldUpdate(cf.field.id, (e.target as HTMLInputElement).value)"
+              @change="(e: Event) => attemptCustomFieldUpdate(cf, (e.target as HTMLInputElement).value)"
             />
             <input
               v-else-if="cf.field.field_type === 'date'"
@@ -241,7 +241,7 @@
               class="prop-input"
               :value="cf.value ?? ''"
               :disabled="isLocked"
-              @change="(e: Event) => emitCustomFieldUpdate(cf.field.id, (e.target as HTMLInputElement).value)"
+              @change="(e: Event) => attemptCustomFieldUpdate(cf, (e.target as HTMLInputElement).value)"
             />
             <label v-else-if="cf.field.field_type === 'boolean'" class="flex items-center gap-2" :class="isLocked ? 'cursor-not-allowed' : 'cursor-pointer'">
               <input
@@ -249,7 +249,7 @@
                 class="w-4 h-4 rounded border-gray-300 text-indigo-600"
                 :checked="cf.value === 'true'"
                 :disabled="isLocked"
-                @change="(e: Event) => emitCustomFieldUpdate(cf.field.id, (e.target as HTMLInputElement).checked ? 'true' : 'false')"
+                @change="(e: Event) => attemptCustomFieldUpdate(cf, (e.target as HTMLInputElement).checked ? 'true' : 'false')"
               />
               <span class="text-sm text-gray-700">{{ cf.value === 'true' ? t('customField.yes') : t('customField.no') }}</span>
             </label>
@@ -258,7 +258,7 @@
               class="prop-input"
               :value="cf.value ?? ''"
               :disabled="isLocked"
-              @change="(e: Event) => emitCustomFieldUpdate(cf.field.id, (e.target as HTMLSelectElement).value)"
+              @change="(e: Event) => attemptCustomFieldUpdate(cf, (e.target as HTMLSelectElement).value)"
             >
               <option value=""></option>
               <option v-for="opt in cf.field.options" :key="opt.id" :value="opt.value">{{ opt.value }}</option>
@@ -266,9 +266,12 @@
             <select
               v-else-if="cf.field.field_type === 'member'"
               class="prop-input"
-              :value="cf.value ? JSON.parse(cf.value)[0] ?? '' : ''"
+              :value="memberSelectValue(cf.value)"
               :disabled="isLocked"
-              @change="(e: Event) => emitCustomFieldUpdate(cf.field.id, JSON.stringify([Number((e.target as HTMLSelectElement).value)]))"
+              @change="(e: Event) => {
+                const v = (e.target as HTMLSelectElement).value
+                attemptCustomFieldUpdate(cf, v === '' ? '' : JSON.stringify([Number(v)]))
+              }"
             >
               <option value=""></option>
               <option v-for="m in members" :key="m.id" :value="m.id">{{ m.display_name }}</option>
@@ -283,6 +286,8 @@
 <script setup lang="ts">
 import { ref, watch, computed, nextTick } from 'vue'
 import { useI18n } from '@/composables/useI18n'
+import { useToast } from '@/composables/useToast'
+import { isEmptyIssueCustomFieldValue } from '@/utils/issue-custom-field-empty'
 import AgentSelector from '@/components/AgentSelector.vue'
 import LabelSelector from '@/components/LabelSelector.vue'
 import PropertyPicker, { type PickerOption } from '@/components/PropertyPicker.vue'
@@ -314,6 +319,8 @@ const props = defineProps<{
   releases: Array<{ id: number; name: string; version: string }>
   customFields: CustomFieldEntry[]
   workspaceId: number
+  /** When non-null, only these custom field IDs are shown (from conditional-field evaluate). */
+  visibleFieldIds?: Set<number> | null
   agentDispatching?: boolean
   autoTriagePending?: boolean
   agentAssigning?: boolean
@@ -328,6 +335,20 @@ const props = defineProps<{
 }>()
 
 const isLocked = computed(() => props.issue?.approval_status === 'pending')
+
+const visibleCustomFields = computed(() => {
+  const set = props.visibleFieldIds
+  if (set === undefined || set === null) return props.customFields || []
+  return (props.customFields || []).filter((cf) => set.has(cf.field.id))
+})
+
+function isFieldRequiredVisible(cf: CustomFieldEntry): boolean {
+  if (!cf.field.is_required) return false
+  const set = props.visibleFieldIds
+  if (set === undefined || set === null) return true
+  return set.has(cf.field.id)
+}
+
 const visibleStates = computed(() =>
   (props.states || []).filter((s: any) => {
     if (s?.is_active === false) return false
@@ -376,6 +397,7 @@ function emitAssign() {
 }
 
 const { t, locale } = useI18n()
+const toast = useToast()
 
 const agentActivities = ref<AgentActivity[]>([])
 
@@ -428,8 +450,25 @@ function activityPreview(markdown: string | undefined): string {
     .trim()
 }
 
-function emitCustomFieldUpdate(fieldId: number, value: string) {
-  emit('update:customField', fieldId, value)
+function memberSelectValue(raw: string | null): string | number {
+  if (!raw) return ''
+  try {
+    const parsed = JSON.parse(raw)
+    if (Array.isArray(parsed) && parsed.length > 0) return parsed[0] ?? ''
+  } catch { /* ignore */ }
+  return ''
+}
+
+function attemptCustomFieldUpdate(cf: CustomFieldEntry, value: string) {
+  const set = props.visibleFieldIds
+  if (set !== undefined && set !== null && !set.has(cf.field.id)) {
+    return
+  }
+  if (isFieldRequiredVisible(cf) && isEmptyIssueCustomFieldValue(cf.field.field_type, value)) {
+    toast.warning(t('issue.requiredFieldsMsg', { fields: cf.field.name }))
+    return
+  }
+  emit('update:customField', cf.field.id, value)
 }
 function toId(value: string | number | null): number | null {
   return value === null ? null : Number(value)

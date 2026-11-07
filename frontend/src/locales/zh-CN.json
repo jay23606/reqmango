@@ -193,6 +193,12 @@
     "noPages": "无关联文档",
     "addPage": "+ 添加文档",
     "searchPagesPlaceholder": "搜索文档...",
+    "unlinkPage": "解除关联",
+    "linkedPagesSearchMinChars": "至少输入 2 个字符以搜索。",
+    "linkedPagesNoSearchResults": "本项目中没有匹配的文档。",
+    "linkedPagesAdded": "已关联文档",
+    "linkedPagesRemoved": "已解除关联",
+    "linkedPagesLoadFailed": "加载关联文档失败",
     "cancel": "取消",
     "save": "保存",
     "saving": "保存中...",
@@ -1803,6 +1809,7 @@
     "enableAction": "启用",
     "deleteAction": "删除",
     "emptyText": "暂无工作项类型，点击上方按钮创建",
+    "parentConstraint": "父类型约束",
     "createTitle": "新建类型",
     "editTitle": "编辑: ",
     "drawerSubtitle": "配置工作项类型的名称、图标和颜色",
@@ -1829,7 +1836,22 @@
     "customProperties": "自定义属性",
     "customPropertiesDesc": "绑定到此工作项类型的自定义字段",
     "noProperties": "暂无绑定属性",
-    "required": "必填"
+    "required": "必填",
+    "level": "层级 (Level)",
+    "parentType": "父类型",
+    "noConstraint": "无约束",
+    "parentHint": "限定此类型只能挂在选定的父类型下",
+    "allowedChildTypes": "允许的子类型",
+    "allowedChildHint": "若勾选名单，则仅允许在子工作项中使用这些类型；留空表示在符合层级规则前提下不限制子类型。",
+    "allowedChildEmpty": "无名单（符合规则的更深类型均可）",
+    "allowedChildNoOptions": "本工作空间尚无可选的更深类型，请先创建更高层级的类型。",
+    "childConstraint": "子类型名单",
+    "level0": "L0 - 根层级 (Epic 级)",
+    "level1": "L1 - 第 1 层子级",
+    "level2": "L2 - 第 2 层子级",
+    "level3": "L3 - 第 3 层子级",
+    "level4": "L4 - 第 4 层子级",
+    "level5": "L5 - 第 5 层子级"
   },
   "pageTab": {
     "title": "页面配置",
@@ -2859,7 +2881,12 @@
     "count": "({count})",
     "download": "下载",
     "delete": "删除",
-    "confirmDelete": "确定要删除 \"{name}\" 吗？"
+    "confirmDelete": "确定要删除 \"{name}\" 吗？",
+    "readOnlyHint": "您没有上传或删除附件的权限，仍可下载已有文件。",
+    "oversize": "「{name}」超过 10MB 限制，未上传。",
+    "uploadFailed": "上传失败。",
+    "deleteFailed": "删除失败。",
+    "loadFailed": "加载附件列表失败。"
   },
   "notification": {
     "title": "通知",
@@ -2900,6 +2927,7 @@
     "title": "子工作项",
     "add": "添加",
     "noSubIssues": "暂无子工作项",
+    "emptyHint": "可在此快速新建子工作项，或从本项目选择已有工作项关联为子项。",
     "childCount": "{count} 个子项",
     "startDate": "开始日期",
     "targetDate": "目标日期",
@@ -3135,7 +3163,10 @@
     "noMatch": "无匹配用户"
   },
   "quickCreate": {
-    "placeholder": "输入标题，按 Enter 快速创建..."
+    "placeholder": "输入标题，按 Enter 快速创建...",
+    "titleRequired": "请输入标题后再创建。",
+    "createFailedGeneric": "无法创建。请打开完整表单填写必填项。",
+    "fullFormLink": "完整表单"
   },
   "cycleBurndown": {
     "title": "燃尽图",
@@ -3190,6 +3221,11 @@
     "parentType": "父类型 (Parent Type)",
     "noConstraint": "无约束",
     "parentHint": "限定此类型只能挂在选定的父类型下",
+    "allowedChildTypes": "允许的子类型",
+    "allowedChildHint": "若勾选名单，则仅允许在子工作项中使用这些类型；留空表示在符合层级规则前提下不限制子类型。",
+    "allowedChildEmpty": "无名单（符合规则的更深类型均可）",
+    "allowedChildNoOptions": "本项目中尚无可选的更深类型，请先创建更高层级的类型。",
+    "childConstraint": "子类型名单",
     "setDefault": "设为默认类型",
     "nameLabel": "名称",
     "namePlaceholder": "输入类型名称",

@@ -85,12 +85,12 @@
             <h3 class="text-sm font-medium text-gray-700">{{ column.label }}</h3>
           </div>
           <div class="flex items-center space-x-1">
-            <button v-if="groupBy === 'state'" @click="openQuickCreate(column.key as number)" class="w-5 h-5 flex items-center justify-center text-gray-500 hover:text-indigo-600 hover:bg-gray-200 rounded text-sm" :title="t('issueKanban.quickCreate')">+</button>
+            <button v-if="canCreateIssue && groupBy === 'state'" @click="openQuickCreate(column.key as number)" class="w-5 h-5 flex items-center justify-center text-gray-500 hover:text-indigo-600 hover:bg-gray-200 rounded text-sm" :title="t('issueKanban.quickCreate')">+</button>
             <span class="text-xs bg-gray-300 text-gray-600 px-1.5 py-0.5 rounded-full">{{ (groupedIssues[column.key] || []).length }}</span>
           </div>
         </div>
-        <div v-if="groupBy === 'state' && quickCreateStateId === column.key" class="mb-3">
-          <QuickCreateInput :project-id="projectId" :workspace-id="workspaceId" :issue-types="issueTypes" :default-state-id="(column.key as number)" :show-priority="false" inline show-cancel @created="onQuickCreated" @cancel="closeQuickCreate" />
+        <div v-if="canCreateIssue && groupBy === 'state' && quickCreateStateId === column.key" class="mb-3">
+          <QuickCreateInput :project-id="projectId" :workspace-id="workspaceId" :issue-types="issueTypes" :default-type-id="defaultTypeId ?? undefined" :default-state-id="(column.key as number)" :show-priority="false" inline show-cancel @created="onQuickCreated" @cancel="closeQuickCreate" />
         </div>
         <VueDraggable
           v-model="groupedIssues[column.key]"
@@ -235,6 +235,11 @@ import { VueDraggable } from 'vue-draggable-plus'
 const props = defineProps<{ projectId: number; workspaceId: number; projectIdentifier?: string; rql?: string; filterSortBy?: string; filterSortDir?: string; filterSortConfig?: string; filterGroupBy?: string; filterSubGroupBy?: string }>()
 const { can: canInProject } = useProjectPermissions(() => props.projectId)
 const canDeleteIssues = computed(() => canInProject('issue:delete'))
+const canCreateIssue = computed(() => canInProject('issue:create'))
+const defaultTypeId = computed(() => {
+  const d = issueTypes.value.find((t: any) => t.is_default)
+  return d?.id ?? null
+})
 const emit = defineEmits<{ (e: 'select', issue: any): void }>()
 const { t } = useI18n()
 const toast = useToast()
@@ -672,6 +677,10 @@ async function onDragAdd(columnKey: string | number, newIndex: number, evt: any,
 const quickCreateStateId = ref<number | null>(null)
 function openQuickCreate(stateId: number) { quickCreateStateId.value = stateId }
 function closeQuickCreate() { quickCreateStateId.value = null }
+
+watch(canCreateIssue, (ok) => {
+  if (!ok) closeQuickCreate()
+})
 function onQuickCreated(issue?: any) {
   quickCreateStateId.value = null
   loadIssues()

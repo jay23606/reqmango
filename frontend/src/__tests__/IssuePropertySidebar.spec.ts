@@ -10,8 +10,9 @@ vi.mock('@/api/agent', () => ({
 vi.mock('@/composables/useI18n', () => ({
   useI18n: () => ({ t: (k: string) => k }),
 }))
+const mockToastWarning = vi.fn()
 vi.mock('@/composables/useToast', () => ({
-  useToast: () => ({ success: vi.fn(), error: vi.fn() }),
+  useToast: () => ({ success: vi.fn(), error: vi.fn(), warning: (...a: unknown[]) => mockToastWarning(...a) }),
 }))
 
 const mockIssue = {
@@ -61,6 +62,7 @@ describe('IssuePropertySidebar', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     mockActivity.mockResolvedValue([])
+    mockToastWarning.mockClear()
   })
 
   it('renders state, priority and assignee pickers with current values', () => {
@@ -119,6 +121,99 @@ describe('IssuePropertySidebar', () => {
     dateInputs[0].setValue('2026-08-01')
     expect(wrapper.emitted('update:startDate')).toBeTruthy()
     expect(wrapper.emitted('update:startDate')![0]).toEqual(['2026-08-01'])
+  })
+
+  it('shows required marker for mandatory custom fields', () => {
+    const wrapper = mount(IssuePropertySidebar, {
+      ...mountOptions,
+      props: {
+        ...mountOptions.props,
+        customFields: [
+          {
+            field: {
+              id: 9,
+              name: 'Repro',
+              field_type: 'text',
+              is_required: true,
+            },
+            value: 'filled',
+          },
+        ],
+      },
+    })
+    const label = wrapper.findAll('label.prop-label').find((l) => l.text().includes('Repro'))
+    expect(label?.text()).toContain('*')
+  })
+
+  it('blocks clearing a required custom field and toasts', async () => {
+    const wrapper = mount(IssuePropertySidebar, {
+      ...mountOptions,
+      props: {
+        ...mountOptions.props,
+        customFields: [
+          {
+            field: {
+              id: 9,
+              name: 'Repro',
+              field_type: 'text',
+              is_required: true,
+            },
+            value: 'steps',
+          },
+        ],
+      },
+    })
+    const el = wrapper.find('input.prop-input[type="text"]').element as HTMLInputElement
+    el.value = ''
+    await el.dispatchEvent(new Event('change', { bubbles: true }))
+    expect(mockToastWarning).toHaveBeenCalled()
+    expect(wrapper.emitted('update:customField')).toBeUndefined()
+  })
+
+  it('does not render custom fields excluded by visibleFieldIds', () => {
+    const wrapper = mount(IssuePropertySidebar, {
+      ...mountOptions,
+      props: {
+        ...mountOptions.props,
+        visibleFieldIds: new Set([10]),
+        customFields: [
+          {
+            field: { id: 9, name: 'HiddenCF', field_type: 'text', is_required: true },
+            value: 'x',
+          },
+          {
+            field: { id: 10, name: 'ShownCF', field_type: 'text', is_required: false },
+            value: 'y',
+          },
+        ],
+      },
+    })
+    expect(wrapper.text()).toContain('ShownCF')
+    expect(wrapper.text()).not.toContain('HiddenCF')
+  })
+
+  it('shows required marker only for visible fields', () => {
+    const wrapper = mount(IssuePropertySidebar, {
+      ...mountOptions,
+      props: {
+        ...mountOptions.props,
+        visibleFieldIds: new Set([10]),
+        customFields: [
+          {
+            field: { id: 9, name: 'HiddenReq', field_type: 'text', is_required: true },
+            value: '',
+          },
+          {
+            field: { id: 10, name: 'VisibleReq', field_type: 'text', is_required: true },
+            value: 'ok',
+          },
+        ],
+      },
+    })
+    const labels = wrapper.findAll('label.prop-label')
+    const visible = labels.find((l) => l.text().includes('VisibleReq'))
+    expect(visible?.text()).toContain('*')
+    expect(wrapper.text()).not.toContain('HiddenReq')
   })
 
 })

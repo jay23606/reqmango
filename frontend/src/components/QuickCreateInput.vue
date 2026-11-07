@@ -34,7 +34,7 @@
       <div class="flex items-center space-x-1">
         <button
           @click="handleCreate"
-          :disabled="!quickCreate.title.trim() || creating"
+          :disabled="creating"
           class="px-3 py-1.5 bg-indigo-600 text-white text-sm rounded-md hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed"
         >
           {{ creating ? t('issueList.creating') : (duplicates.length > 0 ? t('issue.createAnyway') : t('common.create')) }}
@@ -73,19 +73,37 @@
         </template>
       </span>
     </div>
+    <p v-if="titleError" class="mt-1.5 text-xs text-red-600" data-test="quick-create-title-error">{{ titleError }}</p>
+    <div
+      v-if="apiErrorMessage"
+      class="mt-1.5 text-xs text-red-700 bg-red-50 border border-red-100 rounded px-2 py-1.5 space-y-1"
+      data-test="quick-create-api-error"
+    >
+      <p>{{ apiErrorMessage }}</p>
+      <router-link
+        v-if="fullFormHref"
+        :to="fullFormHref"
+        class="text-indigo-600 hover:text-indigo-800 font-medium underline inline-block"
+        data-test="quick-create-full-form-link"
+      >{{ t('quickCreate.fullFormLink') }}</router-link>
+    </div>
   </div>
 </template>
 
 <script setup lang="ts">
 import { ref, reactive, computed, watch, onMounted, onBeforeUnmount } from 'vue'
+import { useRoute } from 'vue-router'
 import issueApi from '@/api/issue'
 import type { DuplicateIssueItem } from '@/api/issue'
 import { listWorkItemTemplates } from '@/api/work-item-template'
 import type { WorkItemTemplate } from '@/types/work-item-template'
 import { useI18n } from '@/composables/useI18n'
+import { useToast } from '@/composables/useToast'
 import { getAutoTriagePref, setAutoTriagePref } from '@/utils/autoTriagePref'
 
+const route = useRoute()
 const { t } = useI18n()
+const toast = useToast()
 
 const props = withDefaults(defineProps<{
   projectId: number
@@ -115,6 +133,8 @@ const emit = defineEmits<{
 
 const titleInput = ref<HTMLInputElement | null>(null)
 const creating = ref(false)
+const titleError = ref('')
+const apiErrorMessage = ref('')
 const autoTriage = ref(getAutoTriagePref(props.projectId))
 watch(autoTriage, (v) => setAutoTriagePref(props.projectId, v))
 watch(() => props.projectId, (id) => { autoTriage.value = getAutoTriagePref(id) })
@@ -132,6 +152,48 @@ const quickCreate = reactive({
 })
 
 const activeTemplateName = computed(() => activeTemplate.value?.name || '')
+
+/** Prefer explicit default, else project default flag, else first type — used when sending type_id if the user leaves “all types”. */
+const resolvedDefaultTypeId = computed((): number | null => {
+  if (props.defaultTypeId != null && props.defaultTypeId > 0) return props.defaultTypeId
+  const marked = props.issueTypes?.find((x: any) => x.is_default)
+  if (marked?.id) return marked.id
+  const first = props.issueTypes?.[0]
+  return first?.id ?? null
+})
+
+function resolveTypeIdForRequest(): number | undefined {
+  if (quickCreate.type_id !== '' && quickCreate.type_id != null) {
+    const n = Number(quickCreate.type_id)
+    return Number.isFinite(n) && n > 0 ? n : undefined
+  }
+  const fallback = resolvedDefaultTypeId.value
+  return fallback != null && fallback > 0 ? fallback : undefined
+}
+
+const fullFormHref = computed(() => {
+  const slug = route.params.slug as string | undefined
+  if (!slug || !props.projectId) return null
+  const q: Record<string, string> = { view: (route.query.view as string) || 'list' }
+  const name = quickCreate.title.trim()
+  if (name) q.name = name
+  const tid = resolveTypeIdForRequest()
+  if (tid != null) q.type_id = String(tid)
+  if (quickCreate.state_id) q.state_id = String(quickCreate.state_id)
+  return { path: `/workspace/${slug}/project/${props.projectId}/issues/new`, query: q }
+})
+
+function extractApiErrorMessage(e: any): string {
+  const data = e?.response?.data
+  if (typeof data?.message === 'string' && data.message.trim()) return data.message.trim()
+  if (Array.isArray(data?.errors) && data.errors.length) {
+    const first = data.errors[0]
+    if (typeof first === 'string') return first
+    if (first?.message) return String(first.message)
+  }
+  if (typeof e?.message === 'string' && e.message.trim()) return e.message.trim()
+  return t('quickCreate.createFailedGeneric')
+}
 
 watch(() => props.defaultTypeId, (newVal) => {
   if (newVal && !quickCreate.type_id) {
@@ -196,6 +258,8 @@ async function runDuplicateCheck() {
 }
 
 watch(() => quickCreate.title, () => {
+  titleError.value = ''
+  apiErrorMessage.value = ''
   if (duplicateTimer) clearTimeout(duplicateTimer)
   duplicateTimer = setTimeout(runDuplicateCheck, 400)
 })
@@ -205,20 +269,31 @@ onBeforeUnmount(() => {
 })
 
 async function handleCreate() {
-  if (!quickCreate.title.trim() || creating.value) return
+  if (creating.value) return
+  const rawTitle = quickCreate.title.trim()
+  if (!rawTitle) {
+    titleError.value = t('quickCreate.titleRequired')
+    toast.warning(t('quickCreate.titleRequired'))
+    return
+  }
 
   creating.value = true
+  apiErrorMessage.value = ''
+  titleError.value = ''
   try {
-    let name = quickCreate.title.trim()
+    let name = rawTitle
     const prefix = activeTemplate.value?.defaults?.name_prefix
     if (prefix && !name.startsWith(prefix)) {
       name = prefix + name
     }
+    const typeId = resolveTypeIdForRequest()
     const issueData: any = {
       name,
-      type_id: quickCreate.type_id ? Number(quickCreate.type_id) : undefined,
       priority: quickCreate.priority,
       auto_triage: autoTriage.value,
+    }
+    if (typeId != null) {
+      issueData.type_id = typeId
     }
     if (quickCreate.state_id) {
       issueData.state_id = quickCreate.state_id
@@ -234,8 +309,15 @@ async function handleCreate() {
     duplicates.value = []
     applyDefaultTemplate()
     titleInput.value?.focus()
-  } catch (e) {
+  } catch (e: any) {
     console.error('Failed to quick create issue:', e)
+    const status = e?.response?.status
+    const msg = extractApiErrorMessage(e)
+    apiErrorMessage.value = msg
+    toast.error(msg)
+    if (status >= 400 && status < 500) {
+      /* keep title for correction */
+    }
   } finally {
     creating.value = false
   }
@@ -246,6 +328,8 @@ function handleCancel() {
   quickCreate.priority = 'none'
   quickCreate.description_html = ''
   duplicates.value = []
+  titleError.value = ''
+  apiErrorMessage.value = ''
   emit('cancel')
 }
 </script>

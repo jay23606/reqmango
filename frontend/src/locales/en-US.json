@@ -193,6 +193,12 @@
     "noPages": "No related pages",
     "addPage": "+ Add Page",
     "searchPagesPlaceholder": "Search pages...",
+    "unlinkPage": "Unlink",
+    "linkedPagesSearchMinChars": "Enter at least 2 characters to search.",
+    "linkedPagesNoSearchResults": "No matching pages in this project.",
+    "linkedPagesAdded": "Page linked",
+    "linkedPagesRemoved": "Page unlinked",
+    "linkedPagesLoadFailed": "Failed to load linked pages",
     "cancel": "Cancel",
     "save": "Save",
     "saving": "Saving...",
@@ -1931,6 +1937,7 @@
     "enableAction": "Enable",
     "deleteAction": "Delete",
     "emptyText": "No work item types yet. Click the button above to create.",
+    "parentConstraint": "Parent constraint",
     "createTitle": "New Type",
     "editTitle": "Edit: ",
     "drawerSubtitle": "Configure the name, icon, and color",
@@ -1957,7 +1964,22 @@
     "customProperties": "Custom properties",
     "customPropertiesDesc": "Custom fields bound to this issue type",
     "noProperties": "No properties bound yet",
-    "required": "Required"
+    "required": "Required",
+    "level": "Level",
+    "parentType": "Parent type",
+    "noConstraint": "No constraint",
+    "parentHint": "Restrict this type to only be used under the selected parent type",
+    "allowedChildTypes": "Allowed child types",
+    "allowedChildHint": "When set, only these types may be used for child issues under this type. Leave empty to allow any type that passes level rules.",
+    "allowedChildEmpty": "No allowlist (any compatible deeper type)",
+    "allowedChildNoOptions": "No deeper types in this workspace yet. Create another type with a higher level first.",
+    "childConstraint": "Child allowlist",
+    "level0": "L0 - Root (Epic)",
+    "level1": "L1 - Level 1 child",
+    "level2": "L2 - Level 2 child",
+    "level3": "L3 - Level 3 child",
+    "level4": "L4 - Level 4 child",
+    "level5": "L5 - Level 5 child"
   },
   "pageTab": {
     "title": "Page Configuration",
@@ -2859,7 +2881,12 @@
     "count": "({count})",
     "download": "Download",
     "delete": "Delete",
-    "confirmDelete": "Are you sure you want to delete \"{name}\"?"
+    "confirmDelete": "Are you sure you want to delete \"{name}\"?",
+    "readOnlyHint": "You do not have permission to upload or delete attachments. You can still download existing files.",
+    "oversize": "\"{name}\" exceeds the 10MB limit and was not uploaded.",
+    "uploadFailed": "Upload failed.",
+    "deleteFailed": "Delete failed.",
+    "loadFailed": "Failed to load attachments."
   },
   "notification": {
     "title": "Notifications",
@@ -2900,6 +2927,7 @@
     "title": "Sub-Issues",
     "add": "Add",
     "noSubIssues": "No sub-issues yet",
+    "emptyHint": "Add a new sub-issue or link an existing one from this project.",
     "childCount": "{count} sub-items",
     "startDate": "Start Date",
     "targetDate": "Target Date",
@@ -3135,7 +3163,10 @@
     "noMatch": "No matching users"
   },
   "quickCreate": {
-    "placeholder": "Enter title, press Enter to quick create..."
+    "placeholder": "Enter title, press Enter to quick create...",
+    "titleRequired": "Enter a title to create a work item.",
+    "createFailedGeneric": "Could not create. Open the full form to fix required fields.",
+    "fullFormLink": "Full form"
   },
   "cycleBurndown": {
     "title": "Burndown Chart",
@@ -3190,6 +3221,11 @@
     "parentType": "Parent Type",
     "noConstraint": "No constraint",
     "parentHint": "Restrict this type to only be used under the selected parent type",
+    "allowedChildTypes": "Allowed child types",
+    "allowedChildHint": "When set, only these types may be used for child issues under this type. Leave empty to allow any type that passes level rules.",
+    "allowedChildEmpty": "No allowlist (any compatible deeper type)",
+    "allowedChildNoOptions": "No deeper types in this project yet. Create another type with a higher level first.",
+    "childConstraint": "Child allowlist",
     "setDefault": "Set as default type",
     "nameLabel": "Name",
     "namePlaceholder": "Enter type name",

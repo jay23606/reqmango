@@ -4,7 +4,7 @@
 > 规格是验收的唯一对照，不是实现日记。
 
 **状态：** 已生效（2026-11-06）  
-**关联：** [ROADMAP.md](../../ROADMAP.md) · [docs/specs/](../specs/)
+**关联：** [路线图](https://github.com/vinthuy/reqmango/blob/master/ROADMAP.md) · [需求规格索引](https://github.com/vinthuy/reqmango/blob/master/docs/specs/README.md)
 
 ---
 
@@ -25,7 +25,7 @@
 | **Plan** | `docs/superpowers/plans/` | 分任务实现步骤（TDD、文件路径） | Design 通过后 |
 | **Acceptance 跑表** | `docs/dev/acceptance/` | 手测 / 自动化勾选结果 | 实现后对照 SRS |
 
-索引见 [docs/specs/README.md](../specs/README.md)。
+索引见 [docs/specs/README.md](https://github.com/vinthuy/reqmango/blob/master/docs/specs/README.md)。
 
 ---
 

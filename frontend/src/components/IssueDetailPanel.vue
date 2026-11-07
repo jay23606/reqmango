@@ -127,6 +127,12 @@
                   v-else-if="activeTab === 'attachments'"
                   :issue-id="issue.id"
                   :project-id="projectId"
+                  @attachment-count-change="
+                    (c) => {
+                      attachmentCountOverride = c
+                      if (issue) issue.attachment_count = c
+                    }
+                  "
                 />
                 <IssueTabTimeTracking
                   v-else-if="activeTab === 'timetrack'"
@@ -172,6 +178,7 @@
                 :modules="moduleOptions"
                 :releases="releaseOptions"
                 :custom-fields="customFieldEntries"
+                :visible-field-ids="sidebarVisibleFieldIds"
                 :workspace-id="workspaceId"
                 :agent-dispatching="agentDispatching"
                 :auto-triage-pending="autoTriagePending"
@@ -268,6 +275,8 @@ import ApprovalSubmitDialog from '@/components/ApprovalSubmitDialog.vue'
 import ApprovalDecisionDialog from '@/components/ApprovalDecisionDialog.vue'
 import ApprovalPendingBanner from '@/components/ApprovalPendingBanner.vue'
 import approvalApi, { type ApprovalResponse } from '@/api/approval'
+import type { FieldVisibilityEvaluateRequest } from '@/api/conditional-field'
+import { useCustomFieldVisibility } from '@/composables/useCustomFieldVisibility'
 
 const router = useRouter()
 const route = useRoute()
@@ -293,6 +302,8 @@ const emit = defineEmits<{
 const { can } = useProjectPermissions(() => props.projectId)
 
 const issue = ref<any>(null)
+/** Local sync for attachments tab count vs list in AttachmentManager */
+const attachmentCountOverride = ref<number | null>(null)
 const loading = ref(false)
 const activeTab = ref('details')
 
@@ -304,6 +315,8 @@ const issueTypeOptions = ref<any[]>([])
 const projectMembers = ref<any[]>([])
 const projectIdentifier = ref('')
 const customFieldEntries = ref<Array<{ field: any; value: string | null }>>([])
+const panelWorkspaceId = computed(() => props.workspaceId)
+const { visibleFieldIds: sidebarVisibleFieldIds, scheduleEvaluate, evaluateNow } = useCustomFieldVisibility(panelWorkspaceId)
 const relationsTabRef = ref<InstanceType<typeof IssueTabRelations> | null>(null)
 const agentDispatching = ref(false)
 const commentsRefreshKey = ref(0)
@@ -359,7 +372,14 @@ const effectiveRelationSummary = computed(() => relationSidebarSummary.value || 
 const tabs = computed(() => [
   { key: 'details', label: t('issue.tabDetails'), count: undefined },
   { key: 'relations', label: t('issue.tabRelations'), count: effectiveRelationSummary.value?.total ?? undefined },
-  { key: 'attachments', label: t('issue.tabAttachments'), count: issue.value?.attachment_count || undefined },
+  {
+    key: 'attachments',
+    label: t('issue.tabAttachments'),
+    count: (() => {
+      const n = attachmentCountOverride.value ?? issue.value?.attachment_count
+      return n != null && n > 0 ? n : undefined
+    })(),
+  },
   { key: 'activity', label: t('issue.tabActivity'), count: undefined },
   { key: 'ai', label: 'AI', count: undefined },
   { key: 'chat', label: t('issue.tabChat'), count: undefined },
@@ -394,6 +414,7 @@ watch(() => [props.issueId, props.visible] as const, async ([id, vis]) => {
     try {
       const result = await issueApi.getIssue(id)
       issue.value = result
+      attachmentCountOverride.value = null
       projectIdentifier.value = result.project?.identifier || ''
       await Promise.all([
         loadStates(),
@@ -413,11 +434,13 @@ watch(() => [props.issueId, props.visible] as const, async ([id, vis]) => {
     } catch (e) {
       console.error('Failed to load issue:', e)
       issue.value = null
+      attachmentCountOverride.value = null
     } finally {
       loading.value = false
     }
   } else if (!vis) {
     issue.value = null
+    attachmentCountOverride.value = null
     activeApproval.value = null
     agentStatus.value = null
     showAICopilot.value = false
@@ -516,6 +539,42 @@ async function loadMembers() {
     projectMembers.value = (d.data || []).map((m: any) => m.user || m)
   } catch { /* */ }
 }
+function issueLabelIdsForVisibility(): number[] {
+  const i = issue.value
+  if (!i) return []
+  if (Array.isArray(i.label_ids) && i.label_ids.length) {
+    return i.label_ids.map((x: any) => Number(x)).filter((n: number) => n > 0)
+  }
+  if (Array.isArray(i.labels) && i.labels.length && typeof i.labels[0] === 'number') {
+    return (i.labels as number[]).filter((n) => n > 0)
+  }
+  if (Array.isArray(i.label_details) && i.label_details.length) {
+    return i.label_details.map((l: { id: number }) => l.id).filter((id: number) => id > 0)
+  }
+  return []
+}
+
+function buildSidebarVisibilityBody(): FieldVisibilityEvaluateRequest | null {
+  if (!props.workspaceId || !issue.value) return null
+  const sid = Number(issue.value.state_id)
+  if (!sid || sid <= 0) return null
+  const typeId = issue.value.issue_type?.id ?? issue.value.issue_type_id ?? issue.value.type_id
+  const pri = String(issue.value.priority ?? 'none').trim().toLowerCase() || 'none'
+  let assignee_ids: number[] = []
+  if (Array.isArray(issue.value.assignee_ids) && issue.value.assignee_ids.length > 0) {
+    assignee_ids = issue.value.assignee_ids.map((x: any) => Number(x)).filter((n: number) => n > 0)
+  } else if (issue.value.assignees?.[0]?.id) {
+    assignee_ids = [Number(issue.value.assignees[0].id)]
+  }
+  return {
+    issue_type_id: typeId ? Number(typeId) : undefined,
+    state_id: sid,
+    priority: pri,
+    assignee_ids,
+    label_ids: issueLabelIdsForVisibility(),
+  }
+}
+
 async function loadCustomFields() {
   try {
     const resp = await getIssueCustomFieldsWithDefinitions(props.issueId!)
@@ -533,6 +592,7 @@ async function loadCustomFields() {
     } else {
       customFieldEntries.value = []
     }
+    await evaluateNow(buildSidebarVisibilityBody)
   } catch { /* */ }
 }
 
@@ -542,6 +602,24 @@ watch(
     if (next === prev || prev === undefined) return
     loadCustomFields()
   },
+)
+
+watch(
+  () => [
+    issue.value?.state_id,
+    issue.value?.priority,
+    issue.value?.assignee_ids,
+    issue.value?.assignees,
+    issue.value?.label_ids,
+    issue.value?.labels,
+    issue.value?.issue_type?.id,
+    issue.value?.issue_type_id,
+    props.workspaceId,
+  ],
+  () => {
+    scheduleEvaluate(buildSidebarVisibilityBody)
+  },
+  { deep: true }
 )
 
 async function loadActiveApproval() {
@@ -782,6 +860,7 @@ async function reloadIssue() {
     const data = await issueApi.getIssue(issue.value.id)
     Object.assign(issue.value, data)
     await loadRelationSummary(issue.value.id)
+    await relationsTabRef.value?.loadLinkedPages?.()
   } catch { /* */ }
 }
 

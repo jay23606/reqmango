@@ -1,4 +1,5 @@
 import { test, expect } from '@playwright/test'
+import { createProjectIssue } from './helpers/demo'
 
 const ADMIN_USER = 'admin@reqmango.com'
 const ADMIN_PASS = 'demo1234'
@@ -108,14 +109,11 @@ test.describe('工作流审批功能', () => {
     console.log('创建审批转换:', transition.id)
 
     // 3. Create an issue in the source state
-    const issueRes = await request.post(`http://localhost:8000/api/v1/issues?project_id=${projectId}&workspace_id=${workspaceId}`, {
-      headers: H,
-      data: {
-        name: 'API测试审批工作项-端到端',
-        description_html: '<p>测试审批端到端</p>',
-        priority: 'medium',
-        state_id: fromState.id,
-      },
+    const issueRes = await createProjectIssue(request, projectId, workspaceId, H, {
+      name: 'API测试审批工作项-端到端',
+      description_html: '<p>测试审批端到端</p>',
+      priority: 'medium',
+      state_id: fromState.id,
     })
     expect(issueRes.ok()).toBeTruthy()
     const issue = await issueRes.json()

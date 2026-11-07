@@ -24,24 +24,25 @@ status (Chinese) lives in [docs/dev/pipeline-status.md](docs/dev/pipeline-status
 
 ## Next — close the remaining work-item gaps
 
-Requirements for this tranche are drafted as SRS (Given/When/Then) under
-[docs/specs/](docs/specs/README.md); process: [docs/dev/sdd.md](docs/dev/sdd.md).
-Freeze those specs before design/plan. Historical task notes:
+**Shipped in code** on branch `feat/mandatory-fields` /
+[PR #32](https://github.com/vinthuy/reqmango/pull/32) (CI green). SRS + acceptance
+tables: [docs/specs/](docs/specs/README.md), [docs/dev/acceptance/](docs/dev/acceptance/).
+Process: [docs/dev/sdd.md](docs/dev/sdd.md). Historical notes:
 [Plane gap analysis](docs/dev/plane-gap-implementation-plan.md).
 
-| Candidate | Why it matters |
-|-----------|----------------|
-| Quick create from the work-item list | Removes a modal from the most frequent action |
-| Mandatory field validation + conditional fields | Makes custom fields trustworthy, not advisory |
-| Type hierarchy rules | Keeps deep hierarchies (6 levels) coherent |
-| Sub-items panel | Parent items are otherwise a dead end in the UI |
-| Page linking | Pages exist; connecting them to work items is the missing half |
-| Notification auto-trigger | The notification centre only pays off if events reach it |
-| Attachment backend | Attachments are currently the weakest part of the item model |
+| Candidate | Status |
+|-----------|--------|
+| Quick create from the work-item list | Done (P0; spot-check list/board in UI) |
+| Mandatory field validation + conditional fields | Done (P0; import CF column mapping still a follow-up) |
+| Type hierarchy rules | Done (P0; admin UI spot-check) |
+| Sub-items panel | Done (P0) |
+| Page linking | Done (P0) |
+| Notification auto-trigger | Done (P0; due-soon remains P1) |
+| Attachment backend | Done (P0) |
 
 ## Later — deeper workflows
 
-- Merge duplicate work items (the intake queue already suggests duplicates)
+- [Merge duplicate work items](docs/specs/2026-11-07-merge-duplicates.md) (draft SRS; intake already suggests duplicates) — **next candidate**
 - Time tracking and estimate categories
 - Recurring work items
 - Release management polish and a release picker in the item view

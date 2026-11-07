@@ -5,10 +5,21 @@
       :sub-issues="subIssues"
       :issue-types="issueTypes"
       :parent-issue-type="currentIssueType"
+      :can-quick-create="canQuickCreateSubIssue"
+      :can-link-existing="canLinkExistingSubIssue"
+      :hierarchy-error="hierarchyError"
       @navigate="(id: number) => emit('navigate', id)"
       @add-existing="openSubIssuePicker"
       @quick-create="handleQuickCreateSubIssue"
       @toggle="handleToggleSubIssue"
+      @dismiss-hierarchy-error="hierarchyError = null"
+    />
+
+    <IssueLinkedPagesCard
+      ref="linkedPagesCardRef"
+      :issue-id="issueId"
+      :project-id="projectId"
+      :slug="slug"
     />
 
     <!-- Parent issue link -->
@@ -189,17 +200,16 @@
 import { ref, computed, onMounted } from 'vue'
 import { useI18n } from '@/composables/useI18n'
 import { useToast } from '@/composables/useToast'
+import { useProjectPermissions } from '@/composables/usePermission'
 import { listIssueRelations, createIssueRelation, deleteIssueRelation, listRelationTypes } from '@/api/relation'
 import { createIssue, updateIssue } from '@/api/issue'
 import IssuePickerDialog from './IssuePickerDialog.vue'
+import IssueLinkedPagesCard from './IssueLinkedPagesCard.vue'
 import RelationSubIssuesCard from './RelationSubIssuesCard.vue'
 import { stateColor, priorityColor } from '@/composables/useRelationHelpers'
 import { IssuePriority } from '@/types/issue'
 
 const COLORS = ['#6366f1', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#ec4899', '#14b8a6', '#f97316']
-
-const { t } = useI18n()
-const toast = useToast()
 
 interface IssueType {
   id: number
@@ -256,6 +266,23 @@ const emit = defineEmits<{
   refresh: []
 }>()
 
+const { t } = useI18n()
+const toast = useToast()
+const { can } = useProjectPermissions(() => props.projectId)
+// POST /issues uses issue:create; setting parent on another issue uses issue:edit.
+const canQuickCreateSubIssue = computed(() => can('issue:create'))
+const canLinkExistingSubIssue = computed(() => can('issue:edit'))
+
+const hierarchyError = ref<string | null>(null)
+
+function getApiErrorMessage(err: unknown): string {
+  const e = err as { response?: { data?: { message?: string; error?: string } }; message?: string }
+  const msg = e?.response?.data?.message || e?.response?.data?.error
+  if (typeof msg === 'string' && msg.trim()) return msg
+  if (typeof e?.message === 'string' && e.message.trim()) return e.message
+  return t('issue.saveFailed')
+}
+
 const allRelations = ref<RelationItem[]>([])
 const relationTypes = ref<Array<{ id: number; name: string; inward_name: string; outward_name: string }>>([])
 
@@ -267,6 +294,12 @@ const pendingRelationTypeId = ref(0)
 
 // Type menu
 const showTypeMenu = ref(false)
+
+const linkedPagesCardRef = ref<InstanceType<typeof IssueLinkedPagesCard> | null>(null)
+
+async function loadLinkedPages() {
+  await linkedPagesCardRef.value?.loadLinkedPages()
+}
 
 // Group relations by type - only types that have relations
 const relationGroups = computed<RelationGroup[]>(() => {
@@ -375,16 +408,20 @@ async function onPickerSelect(selectedId: number) {
 
 async function addSubIssue(childId: number) {
   try {
+    hierarchyError.value = null
     await updateIssue(childId, { parent_id: props.issueId })
     emit('refresh')
   } catch (err) {
     console.error('Failed to set parent issue:', err)
-    toast.error(t('issue.saveFailed'))
+    const msg = getApiErrorMessage(err)
+    hierarchyError.value = msg
+    toast.error(msg)
   }
 }
 
 async function handleQuickCreateSubIssue(name: string, typeId?: number) {
   try {
+    hierarchyError.value = null
     await createIssue(props.projectId, props.workspaceId, {
       name,
       parent_id: props.issueId,
@@ -394,7 +431,9 @@ async function handleQuickCreateSubIssue(name: string, typeId?: number) {
     emit('refresh')
   } catch (err) {
     console.error('Failed to create sub-issue:', err)
-    toast.error(t('issue.saveFailed'))
+    const msg = getApiErrorMessage(err)
+    hierarchyError.value = msg
+    toast.error(msg)
   }
 }
 
@@ -438,5 +477,5 @@ async function removeRelation(relationId: number) {
   }
 }
 
-defineExpose({ relationSummary, loadRelations })
+defineExpose({ relationSummary, loadRelations, loadLinkedPages })
 </script>

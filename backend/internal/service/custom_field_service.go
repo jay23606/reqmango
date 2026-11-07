@@ -2,7 +2,9 @@ package service
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
+	"sort"
 	"strconv"
 	"strings"
 
@@ -547,9 +549,9 @@ func (s *CustomFieldService) DeleteOption(fieldID, optionID uint64) error {
 // ==================== Issue Values ====================
 
 func (s *CustomFieldService) SetIssueValue(issueID uint64, req request.IssueCustomFieldValueCreate) (*response.IssueCustomFieldValueResponse, error) {
-	// Verify issue exists
+	// Verify issue exists (preload links for conditional-field visibility)
 	var issue model.Issue
-	if err := s.db.First(&issue, issueID).Error; err != nil {
+	if err := s.db.Preload("AssigneeLinks").Preload("LabelLinks").First(&issue, issueID).Error; err != nil {
 		return nil, common.NotFound("Issue not found")
 	}
 
@@ -568,14 +570,29 @@ func (s *CustomFieldService) SetIssueValue(issueID uint64, req request.IssueCust
 		return nil, err
 	}
 
+	newVal := strings.TrimSpace(req.Value)
+	if newVal == "" && issue.IssueTypeID != nil && *issue.IssueTypeID != 0 {
+		required, name, err := s.isTypeFieldRequired(*issue.IssueTypeID, req.FieldID)
+		if err != nil {
+			return nil, err
+		}
+		if required {
+			visible, err := s.isCustomFieldVisibleForIssue(&issue, req.FieldID)
+			if err != nil {
+				return nil, err
+			}
+			if visible {
+				return nil, common.BadRequest("缺少必填字段: " + name)
+			}
+		}
+	}
+
 	// Read old value before upsert
 	var old model.IssueCustomFieldValue
 	oldExists := s.db.Where("issue_id = ? AND field_id = ?", issueID, req.FieldID).First(&old).Error == nil
 
 	// Upsert: delete existing, then create
 	s.db.Where("issue_id = ? AND field_id = ?", issueID, req.FieldID).Delete(&model.IssueCustomFieldValue{})
-
-	newVal := strings.TrimSpace(req.Value)
 	v := model.IssueCustomFieldValue{
 		IssueID: issueID,
 		FieldID: req.FieldID,
@@ -612,8 +629,49 @@ func (s *CustomFieldService) SetIssueValue(issueID uint64, req request.IssueCust
 
 func (s *CustomFieldService) BulkSetIssueValues(req request.BulkCustomFieldValueUpdate) ([]response.IssueCustomFieldValueResponse, error) {
 	var issue model.Issue
-	if err := s.db.First(&issue, req.IssueID).Error; err != nil {
+	if err := s.db.Preload("AssigneeLinks").Preload("LabelLinks").First(&issue, req.IssueID).Error; err != nil {
 		return nil, common.NotFound("Issue not found")
+	}
+
+	// Last write wins per field; only bound fields participate (same as apply loop).
+	finalVals := make(map[uint64]string)
+	for _, item := range req.Values {
+		var field model.CustomField
+		if err := s.db.First(&field, item.FieldID).Error; err != nil {
+			continue
+		}
+		if !s.fieldBoundToIssueType(&issue, item.FieldID) {
+			continue
+		}
+		finalVals[item.FieldID] = strings.TrimSpace(item.Value)
+	}
+	if issue.IssueTypeID != nil && *issue.IssueTypeID != 0 {
+		var missing []string
+		seen := make(map[string]bool)
+		for fieldID, v := range finalVals {
+			if v != "" {
+				continue
+			}
+			required, name, err := s.isTypeFieldRequired(*issue.IssueTypeID, fieldID)
+			if err != nil {
+				return nil, err
+			}
+			if !required {
+				continue
+			}
+			visible, err := s.isCustomFieldVisibleForIssue(&issue, fieldID)
+			if err != nil {
+				return nil, err
+			}
+			if visible && !seen[name] {
+				seen[name] = true
+				missing = append(missing, name)
+			}
+		}
+		if len(missing) > 0 {
+			sort.Strings(missing)
+			return nil, common.BadRequest("缺少必填字段: " + strings.Join(missing, "、"))
+		}
 	}
 
 	result := make([]response.IssueCustomFieldValueResponse, 0, len(req.Values))
@@ -676,7 +734,7 @@ func (s *CustomFieldService) ListIssueValues(issueID uint64) ([]response.IssueCu
 
 func (s *CustomFieldService) UpdateIssueValue(issueID, fieldID uint64, val string) (*response.IssueCustomFieldValueResponse, error) {
 	var issue model.Issue
-	if err := s.db.First(&issue, issueID).Error; err != nil {
+	if err := s.db.Preload("AssigneeLinks").Preload("LabelLinks").First(&issue, issueID).Error; err != nil {
 		return nil, common.NotFound("Issue not found")
 	}
 
@@ -693,6 +751,23 @@ func (s *CustomFieldService) UpdateIssueValue(issueID, fieldID uint64, val strin
 		return nil, err
 	}
 
+	newVal := strings.TrimSpace(val)
+	if newVal == "" && issue.IssueTypeID != nil && *issue.IssueTypeID != 0 {
+		required, name, err := s.isTypeFieldRequired(*issue.IssueTypeID, fieldID)
+		if err != nil {
+			return nil, err
+		}
+		if required {
+			visible, err := s.isCustomFieldVisibleForIssue(&issue, fieldID)
+			if err != nil {
+				return nil, err
+			}
+			if visible {
+				return nil, common.BadRequest("缺少必填字段: " + name)
+			}
+		}
+	}
+
 	var v model.IssueCustomFieldValue
 	result := s.db.Where("issue_id = ? AND field_id = ?", issueID, fieldID).First(&v)
 	if result.Error != nil {
@@ -700,13 +775,13 @@ func (s *CustomFieldService) UpdateIssueValue(issueID, fieldID uint64, val strin
 		v = model.IssueCustomFieldValue{
 			IssueID: issueID,
 			FieldID: fieldID,
-			Value:   strings.TrimSpace(val),
+			Value:   newVal,
 		}
 		if err := s.db.Create(&v).Error; err != nil {
 			return nil, common.Internal("Failed to create custom field value")
 		}
 	} else {
-		v.Value = strings.TrimSpace(val)
+		v.Value = newVal
 		if err := s.db.Save(&v).Error; err != nil {
 			return nil, common.Internal("Failed to update custom field value")
 		}
@@ -722,6 +797,29 @@ func (s *CustomFieldService) UpdateIssueValue(issueID, fieldID uint64, val strin
 }
 
 func (s *CustomFieldService) DeleteIssueValue(issueID, fieldID uint64) error {
+	var issue model.Issue
+	if err := s.db.Preload("AssigneeLinks").Preload("LabelLinks").First(&issue, issueID).Error; err != nil {
+		return common.NotFound("Issue not found")
+	}
+	if !s.fieldBoundToIssueType(&issue, fieldID) {
+		return common.BadRequest("Custom field is not available for this issue type")
+	}
+	if issue.IssueTypeID != nil && *issue.IssueTypeID != 0 {
+		required, name, err := s.isTypeFieldRequired(*issue.IssueTypeID, fieldID)
+		if err != nil {
+			return err
+		}
+		if required {
+			visible, err := s.isCustomFieldVisibleForIssue(&issue, fieldID)
+			if err != nil {
+				return err
+			}
+			if visible {
+				return common.BadRequest("缺少必填字段: " + name)
+			}
+		}
+	}
+
 	result := s.db.Where("issue_id = ? AND field_id = ?", issueID, fieldID).Delete(&model.IssueCustomFieldValue{})
 	if result.RowsAffected == 0 {
 		return common.NotFound("Custom field value not found")
@@ -777,6 +875,53 @@ func (s *CustomFieldService) GetIssueFieldsWithValues(issueID uint64) (*response
 	}
 
 	return resp, nil
+}
+
+// isCustomFieldVisibleForIssue reports whether fieldID is visible for the issue's current context
+// (conditional hide rules). When false, required-field clears are allowed on the custom-field API.
+func (s *CustomFieldService) isCustomFieldVisibleForIssue(issue *model.Issue, fieldID uint64) (bool, error) {
+	if issue == nil {
+		return true, nil
+	}
+	condSvc := NewConditionalFieldService(s.db)
+	assigneeIDs := make([]uint64, 0, len(issue.AssigneeLinks))
+	for _, link := range issue.AssigneeLinks {
+		assigneeIDs = append(assigneeIDs, link.UserID)
+	}
+	labelIDs := make([]uint64, 0, len(issue.LabelLinks))
+	for _, link := range issue.LabelLinks {
+		labelIDs = append(labelIDs, link.LabelID)
+	}
+	visibleFieldIDs, err := condSvc.EvaluateFieldVisibility(issue.WorkspaceID, issue.IssueTypeID, issue.StateID, issue.Priority, assigneeIDs, labelIDs)
+	if err != nil {
+		return false, err
+	}
+	for _, id := range visibleFieldIDs {
+		if id == fieldID {
+			return true, nil
+		}
+	}
+	return false, nil
+}
+
+// isTypeFieldRequired reports whether fieldID is required on the given issue type (binding is authoritative).
+func (s *CustomFieldService) isTypeFieldRequired(typeID, fieldID uint64) (bool, string, error) {
+	var row struct {
+		IsRequired bool
+		Name       string
+	}
+	err := s.db.Table("issue_type_fields").
+		Select("issue_type_fields.is_required AS is_required, custom_fields.name AS name").
+		Joins("JOIN custom_fields ON custom_fields.id = issue_type_fields.field_id").
+		Where("issue_type_fields.type_id = ? AND issue_type_fields.field_id = ?", typeID, fieldID).
+		Take(&row).Error
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return false, "", nil
+		}
+		return false, "", common.Internal("Failed to load type field binding")
+	}
+	return row.IsRequired, row.Name, nil
 }
 
 // fieldBoundToIssueType reports whether fieldID is attached to the issue's type.

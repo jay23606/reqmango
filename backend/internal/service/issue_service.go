@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"encoding/csv"
+	"errors"
 	"fmt"
 	"io"
 	"log"
@@ -94,6 +95,22 @@ func (s *IssueService) validateTypeVisibleInProject(typeID, projectID, workspace
 	return common.BadRequest("This issue type has not been imported into the project")
 }
 
+// resolveProjectDefaultIssueTypeID picks the workspace default type marked is_default in the
+// visible set — matching Project.vue defaultTypeId (no fallback to "first visible").
+func (s *IssueService) resolveProjectDefaultIssueTypeID(projectID, workspaceID uint64) (*uint64, error) {
+	visible, err := issuetype.Visible(s.db, workspaceID, &projectID)
+	if err != nil {
+		return nil, common.Internal("Failed to resolve issue types")
+	}
+	for i := range visible {
+		if visible[i].IsDefault {
+			id := visible[i].ID
+			return &id, nil
+		}
+	}
+	return nil, nil
+}
+
 // nextIssueSequence holds the project lock until the caller's transaction ends.
 func nextIssueSequence(tx *gorm.DB, projectID uint64) (int, error) {
 	var project model.Project
@@ -116,11 +133,40 @@ func (s *IssueService) Create(req *request.IssueCreateRequest, projectID, worksp
 		return nil, common.NotFound("Project not found")
 	}
 
-	// Validate issue type is visible in the project
-	if req.TypeID != nil && *req.TypeID > 0 {
+	explicitTypeID := req.TypeID != nil && *req.TypeID > 0
+	// Validate issue type is visible in the project when the client sends one
+	if explicitTypeID {
 		if err := s.validateTypeVisibleInProject(*req.TypeID, projectID, workspaceID); err != nil {
 			return nil, err
 		}
+	}
+
+	hasParent := req.ParentID != nil && *req.ParentID > 0
+
+	// UI default (is_default only) is used for top-level quick-create when type is omitted:
+	// mandatory custom-field checks and persisted IssueTypeID. It must not be applied to
+	// hierarchy validation or to sub-issues with omitted type (nil type inherits no root-type rules).
+	var projectDefaultTypeID *uint64
+	if !explicitTypeID {
+		var err error
+		projectDefaultTypeID, err = s.resolveProjectDefaultIssueTypeID(projectID, workspaceID)
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	var persistedTypeID *uint64
+	var mandatoryTypeID *uint64
+	if explicitTypeID {
+		tid := *req.TypeID
+		persistedTypeID = &tid
+		mandatoryTypeID = &tid
+	} else if !hasParent {
+		persistedTypeID = projectDefaultTypeID
+		mandatoryTypeID = projectDefaultTypeID
+	} else {
+		persistedTypeID = nil
+		mandatoryTypeID = nil
 	}
 
 	// Get default state if not specified
@@ -162,7 +208,7 @@ func (s *IssueService) Create(req *request.IssueCreateRequest, projectID, worksp
 		ExternalID:          req.ExternalID,
 		ExternalSource:      req.ExternalSource,
 		CoverImageURL:       req.CoverImageURL,
-		IssueTypeID:         req.TypeID,
+		IssueTypeID:         persistedTypeID,
 	}
 	issue.CreatedByID = &userID
 	issue.UpdatedByID = &userID
@@ -183,8 +229,8 @@ func (s *IssueService) Create(req *request.IssueCreateRequest, projectID, worksp
 			return nil, common.BadRequest("Maximum hierarchy depth (6 levels) exceeded")
 		}
 		issue.Depth = parent.Depth + 1
-		// Validate type hierarchy
-		if req.TypeID != nil && *req.TypeID > 0 {
+		// Validate type hierarchy (only when the client sent an explicit type)
+		if explicitTypeID {
 			var childType model.IssueType
 			if s.db.First(&childType, *req.TypeID).Error == nil {
 				// Root type check: types without parent_type_id and level 0 cannot have parents
@@ -218,15 +264,6 @@ func (s *IssueService) Create(req *request.IssueCreateRequest, projectID, worksp
 				}
 			}
 		}
-	}
-
-	// Validate mandatory custom fields
-	var typeID uint64
-	if req.TypeID != nil {
-		typeID = *req.TypeID
-	}
-	if err := s.validateMandatoryCustomFields(projectID, workspaceID, typeID, req.CustomFieldValues); err != nil {
-		return nil, err
 	}
 
 	// Parse dates
@@ -270,6 +307,25 @@ func (s *IssueService) Create(req *request.IssueCreateRequest, projectID, worksp
 
 	// Validate labels belong to this project
 	if err := validateLabelsBelongToProject(s.db, req.LabelIDs, projectID); err != nil {
+		return nil, err
+	}
+
+	// Validate mandatory custom fields (only fields visible under the resolved context)
+	var createTypeID uint64
+	var createTypePtr *uint64
+	if mandatoryTypeID != nil {
+		createTypeID = *mandatoryTypeID
+		if createTypeID > 0 {
+			createTypePtr = &createTypeID
+		}
+	}
+	if err := s.validateMandatoryCustomFields(workspaceID, createTypePtr, req.CustomFieldValues, fieldVisibilityContext{
+		IssueTypeID: createTypeID,
+		StateID:     stateID,
+		Priority:    priority,
+		AssigneeIDs: assigneeIDs,
+		LabelIDs:    req.LabelIDs,
+	}); err != nil {
 		return nil, err
 	}
 
@@ -335,6 +391,17 @@ func (s *IssueService) Create(req *request.IssueCreateRequest, projectID, worksp
 
 	if err := tx.Commit().Error; err != nil {
 		return nil, common.Internal("Failed to commit transaction")
+	}
+
+	if s.notificationSvc != nil && len(assigneeIDs) > 0 {
+		actor := &userID
+		projectIDPtr := issue.ProjectID
+		issueIDPtr := issue.ID
+		for _, aid := range assigneeIDs {
+			title := fmt.Sprintf("工作项分配: %s", issue.Name)
+			message := fmt.Sprintf("您被分配到工作项 #%d: %s", issue.SequenceID, issue.Name)
+			_ = s.notificationSvc.TriggerNotification(s.db, "issue_assigned", title, message, aid, actor, &projectIDPtr, &issueIDPtr)
+		}
 	}
 
 	// Automation trigger: issue_created (after commit, uses own DB connection)
@@ -725,12 +792,17 @@ func (s *IssueService) Update(issueID uint64, req *request.IssueUpdateRequest, u
 		return nil, common.NotFound("Issue not found")
 	}
 
+	var priorAssigneeIDs []uint64
+	s.db.Model(&model.IssueAssignee{}).Where("issue_id = ?", issueID).Pluck("user_id", &priorAssigneeIDs)
+
 	tx := s.db.Begin()
 
 	// Track changes for activity
 	hasChanges := false
 	var oldStateID uint64         // Store old state ID for automation context
 	oldPriority := issue.Priority // Store old priority for automation context
+	var stateChangeNotify bool
+	var stateChangeOldName, stateChangeNewName string
 
 	if req.Name != nil && *req.Name != issue.Name {
 		oldVal := issue.Name
@@ -780,40 +852,9 @@ func (s *IssueService) Update(issueID uint64, req *request.IssueUpdateRequest, u
 			strPtr(oldState.Name), strPtr(newState.Name), nil, &userID)
 		hasChanges = true
 
-		if s.notificationSvc != nil {
-
-			recipientIDs := make(map[uint64]bool)
-
-			var assignees []model.IssueAssignee
-			s.db.Where("issue_id = ?", issueID).Find(&assignees)
-			for _, a := range assignees {
-				if a.UserID != userID {
-					recipientIDs[a.UserID] = true
-				}
-			}
-
-			var watchers []model.IssueWatcher
-			s.db.Where("issue_id = ?", issueID).Find(&watchers)
-			for _, w := range watchers {
-				if w.UserID != userID {
-					recipientIDs[w.UserID] = true
-				}
-			}
-
-			s.addProjectLeadAndSubscribers(issue.ProjectID, userID, recipientIDs)
-
-			if len(recipientIDs) > 0 {
-				ids := make([]uint64, 0, len(recipientIDs))
-				for id := range recipientIDs {
-					ids = append(ids, id)
-				}
-				title := fmt.Sprintf("状态变更: %s", issue.Name)
-				message := fmt.Sprintf("工作项 #%d 状态从 %s 变为 %s", issue.SequenceID, oldState.Name, newState.Name)
-				issueIDPtr := issueID
-				projectIDPtr := issue.ProjectID
-				_ = s.notificationSvc.TriggerNotificationsBulk(tx, "issue_state_changed", title, message, ids, &userID, &projectIDPtr, &issueIDPtr)
-			}
-		}
+		stateChangeNotify = true
+		stateChangeOldName = oldState.Name
+		stateChangeNewName = newState.Name
 	}
 	if req.SortOrder != nil && *req.SortOrder != issue.SortOrder {
 		issue.SortOrder = *req.SortOrder
@@ -830,6 +871,14 @@ func (s *IssueService) Update(issueID uint64, req *request.IssueUpdateRequest, u
 
 	// Handle assignees
 	if req.AssigneeIDs != nil {
+		oldSet := make(map[uint64]bool, len(priorAssigneeIDs))
+		for _, id := range priorAssigneeIDs {
+			oldSet[id] = true
+		}
+		newSet := make(map[uint64]bool, len(req.AssigneeIDs))
+		for _, aid := range req.AssigneeIDs {
+			newSet[aid] = true
+		}
 		// Remove existing
 		tx.Where("issue_id = ?", issueID).Delete(&model.IssueAssignee{})
 		// Add new
@@ -838,6 +887,49 @@ func (s *IssueService) Update(issueID uint64, req *request.IssueUpdateRequest, u
 		}
 		s.createActivity(tx, issueID, "updated", strPtr("assignees"), nil, nil, nil, &userID)
 		hasChanges = true
+
+		if s.notificationSvc != nil {
+			projPtr := issue.ProjectID
+			issuePtr := issueID
+			for aid := range newSet {
+				if oldSet[aid] {
+					continue
+				}
+				title := fmt.Sprintf("工作项分配: %s", issue.Name)
+				message := fmt.Sprintf("您被分配到工作项 #%d: %s", issue.SequenceID, issue.Name)
+				_ = s.notificationSvc.TriggerNotification(tx, "issue_assigned", title, message, aid, &userID, &projPtr, &issuePtr)
+			}
+		}
+	}
+
+	if stateChangeNotify && s.notificationSvc != nil {
+		recipientIDs := make(map[uint64]bool)
+		var assignees []model.IssueAssignee
+		tx.Where("issue_id = ?", issueID).Find(&assignees)
+		for _, a := range assignees {
+			if a.UserID != userID {
+				recipientIDs[a.UserID] = true
+			}
+		}
+		var watchers []model.IssueWatcher
+		tx.Where("issue_id = ?", issueID).Find(&watchers)
+		for _, w := range watchers {
+			if w.UserID != userID {
+				recipientIDs[w.UserID] = true
+			}
+		}
+		s.addProjectLeadAndSubscribers(issue.ProjectID, userID, recipientIDs)
+		if len(recipientIDs) > 0 {
+			ids := make([]uint64, 0, len(recipientIDs))
+			for id := range recipientIDs {
+				ids = append(ids, id)
+			}
+			title := fmt.Sprintf("状态变更: %s", issue.Name)
+			message := fmt.Sprintf("工作项 #%d 状态从 %s 变为 %s", issue.SequenceID, stateChangeOldName, stateChangeNewName)
+			issueIDPtr := issueID
+			projectIDPtr := issue.ProjectID
+			_ = s.notificationSvc.TriggerNotificationsBulk(tx, "issue_state_changed", title, message, ids, &userID, &projectIDPtr, &issueIDPtr)
+		}
 	}
 
 	// Handle labels
@@ -1197,7 +1289,7 @@ func (s *IssueService) AddAssignee(issueID, userID, actorID uint64) error {
 	s.createActivity(s.db, issueID, "updated", strPtr("assignees"), nil, nil, nil, &actorID)
 
 	// Trigger notification for assignment
-	if s.notificationSvc != nil && userID != actorID {
+	if s.notificationSvc != nil {
 		title := fmt.Sprintf("工作项分配: %s", issue.Name)
 		message := fmt.Sprintf("您被分配到工作项 #%d: %s", issue.SequenceID, issue.Name)
 		issueIDPtr := issueID
@@ -1918,6 +2010,11 @@ func (s *IssueService) BuildIssueResponse(issue *model.Issue) (*response.IssueRe
 	// Sub-issues count
 	resp.SubIssuesCount = int64(len(issue.SubIssues))
 
+	var attachmentCount int64
+	if err := s.db.Model(&model.Attachment{}).Where("issue_id = ?", issue.ID).Count(&attachmentCount).Error; err == nil {
+		resp.AttachmentCount = int(attachmentCount)
+	}
+
 	// Soft delete
 	if issue.DeletedAt.Valid {
 		resp.DeletedAt = &issue.DeletedAt.Time
@@ -2141,6 +2238,11 @@ func (s *IssueService) importItems(projectID, workspaceID, userID uint64, items 
 	if err != nil {
 		return nil, err
 	}
+	var defaultImportState model.State
+	if err := s.db.Where("project_id = ? AND is_default = ?", projectID, true).First(&defaultImportState).Error; err != nil {
+		return nil, common.NotFound("No default state found for project")
+	}
+	importDefaultStateID := defaultImportState.ID
 	typeMap, err := s.loadTypeMap(projectID)
 	if err != nil {
 		return nil, err
@@ -2265,6 +2367,59 @@ func (s *IssueService) importItems(projectID, workspaceID, userID uint64, items 
 
 		if item.ParentTitle != "" && !titles[item.ParentTitle] {
 			warn(row, "parent", fmt.Sprintf("父标题 %q 不在本次导入中，该行将作为顶层工作项", item.ParentTitle))
+		}
+
+		// Mandatory custom fields: same rule as Create (including UI default type when type is omitted).
+		effectiveTypeID := typeID
+		if effectiveTypeID == 0 {
+			defaultTypeID, resolveErr := s.resolveProjectDefaultIssueTypeID(projectID, workspaceID)
+			if resolveErr != nil {
+				result.FailCount++
+				msg := resolveErr.Error()
+				var appErr *common.AppError
+				if errors.As(resolveErr, &appErr) && appErr.Message != "" {
+					msg = appErr.Message
+				}
+				result.Errors = append(result.Errors, response.ImportError{
+					Row: row, Title: item.Name, Message: msg,
+				})
+				continue
+			}
+			if defaultTypeID != nil {
+				effectiveTypeID = *defaultTypeID
+			}
+		}
+		if effectiveTypeID > 0 {
+			cfValues := importCustomFieldValues(item)
+			visibilityStateID := stateID
+			if visibilityStateID == 0 {
+				visibilityStateID = importDefaultStateID
+			}
+			priority := strings.TrimSpace(item.Priority)
+			if priority == "" {
+				priority = common.PriorityNone
+			}
+			typePtr := effectiveTypeID
+			if err := s.validateMandatoryCustomFields(workspaceID, &typePtr, cfValues, fieldVisibilityContext{
+				IssueTypeID: effectiveTypeID,
+				StateID:     visibilityStateID,
+				Priority:    priority,
+				AssigneeIDs: assigneeIDs,
+				LabelIDs:    labelIDs,
+			}); err != nil {
+				result.FailCount++
+				msg := err.Error()
+				var appErr *common.AppError
+				if errors.As(err, &appErr) && appErr.Message != "" {
+					msg = appErr.Message
+				}
+				result.Errors = append(result.Errors, response.ImportError{
+					Row:     row,
+					Title:   item.Name,
+					Message: msg,
+				})
+				continue
+			}
 		}
 
 		rows = append(rows, resolvedRow{
@@ -2689,7 +2844,30 @@ func (s *IssueService) ExportIssues(projectID uint64) ([]ExportIssueItem, error)
 	return result, nil
 }
 
-func (s *IssueService) validateMandatoryCustomFields(projectID, workspaceID, issueTypeID uint64, cfValues map[uint64]interface{}) error {
+// importCustomFieldValues maps parsed import row data to custom field IDs.
+// CSV/JSON import does not carry custom fields yet; callers pass the result
+// (nil / empty) into validateMandatoryCustomFields alongside the resolved type.
+func importCustomFieldValues(item request.ImportIssueItem) map[uint64]interface{} {
+	_ = item
+	return nil
+}
+
+// fieldVisibilityContext carries issue context for conditional-field visibility
+// when enforcing mandatory custom fields (write paths only).
+type fieldVisibilityContext struct {
+	IssueTypeID uint64
+	StateID     uint64
+	Priority    string
+	AssigneeIDs []uint64
+	LabelIDs    []uint64
+}
+
+func (s *IssueService) validateMandatoryCustomFields(workspaceID uint64, issueTypeID *uint64, cfValues map[uint64]interface{}, ctx fieldVisibilityContext) error {
+	if issueTypeID == nil || *issueTypeID == 0 {
+		return nil
+	}
+	typeID := *issueTypeID
+
 	var requiredFields []struct {
 		FieldID uint64
 		Name    string
@@ -2698,7 +2876,7 @@ func (s *IssueService) validateMandatoryCustomFields(projectID, workspaceID, iss
 	err := s.db.Table("issue_type_fields").
 		Select("issue_type_fields.field_id, custom_fields.name").
 		Joins("JOIN custom_fields ON custom_fields.id = issue_type_fields.field_id").
-		Where("issue_type_fields.type_id = ? AND issue_type_fields.is_required = ?", issueTypeID, true).
+		Where("issue_type_fields.type_id = ? AND issue_type_fields.is_required = ?", typeID, true).
 		Scan(&requiredFields).Error
 
 	if err != nil {
@@ -2711,8 +2889,25 @@ func (s *IssueService) validateMandatoryCustomFields(projectID, workspaceID, iss
 		cfValues = map[uint64]interface{}{}
 	}
 
+	typePtr := &ctx.IssueTypeID
+	if ctx.IssueTypeID == 0 {
+		typePtr = nil
+	}
+	condSvc := NewConditionalFieldService(s.db)
+	visibleFieldIDs, err := condSvc.EvaluateFieldVisibility(workspaceID, typePtr, ctx.StateID, ctx.Priority, ctx.AssigneeIDs, ctx.LabelIDs)
+	if err != nil {
+		return err
+	}
+	visibleSet := make(map[uint64]struct{}, len(visibleFieldIDs))
+	for _, id := range visibleFieldIDs {
+		visibleSet[id] = struct{}{}
+	}
+
 	var missingFields []string
 	for _, rf := range requiredFields {
+		if _, ok := visibleSet[rf.FieldID]; !ok {
+			continue
+		}
 		if val, exists := cfValues[rf.FieldID]; !exists || val == nil || val == "" {
 			missingFields = append(missingFields, rf.Name)
 		}
@@ -2728,40 +2923,86 @@ func (s *IssueService) validateMandatoryCustomFields(projectID, workspaceID, iss
 func (s *IssueService) AddPage(issueID, pageID, actorID uint64) error {
 	var issue model.Issue
 	if err := s.db.First(&issue, issueID).Error; err != nil {
-		return common.NotFound("Issue not found")
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return common.NotFound("Issue not found")
+		}
+		return common.Internal("Failed to fetch issue")
 	}
 
 	var page model.Page
 	if err := s.db.First(&page, pageID).Error; err != nil {
-		return common.NotFound("Page not found")
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return common.NotFound("Page not found")
+		}
+		return common.Internal("Failed to fetch page")
 	}
 
-	if err := s.db.Model(&issue).Association("Pages").Append(&page); err != nil {
+	if page.ProjectID != issue.ProjectID {
+		return common.Forbidden("Page is not in the same project as the issue")
+	}
+
+	// Idempotent: composite PK on issue_pages yields ON CONFLICT DO NOTHING (PostgreSQL)
+	// and INSERT OR IGNORE semantics on SQLite with AutoMigrate unique constraint.
+	res := s.db.Exec(
+		"INSERT INTO issue_pages (issue_id, page_id) VALUES (?, ?) ON CONFLICT DO NOTHING",
+		issueID, pageID,
+	)
+	if res.Error != nil {
 		return common.Internal("Failed to add page to issue")
 	}
-
 	return nil
 }
 
 func (s *IssueService) RemovePage(issueID, pageID, actorID uint64) error {
 	var issue model.Issue
 	if err := s.db.First(&issue, issueID).Error; err != nil {
-		return common.NotFound("Issue not found")
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return common.NotFound("Issue not found")
+		}
+		return common.Internal("Failed to fetch issue")
 	}
 
-	if err := s.db.Model(&issue).Association("Pages").Delete(&model.Page{BaseModel: model.BaseModel{ID: pageID}}); err != nil {
+	var page model.Page
+	if err := s.db.First(&page, pageID).Error; err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return common.NotFound("Page not found")
+		}
+		return common.Internal("Failed to fetch page")
+	}
+
+	if page.ProjectID != issue.ProjectID {
+		return common.Forbidden("Page is not in the same project as the issue")
+	}
+
+	res := s.db.Exec("DELETE FROM issue_pages WHERE issue_id = ? AND page_id = ?", issueID, pageID)
+	if res.Error != nil {
 		return common.Internal("Failed to remove page from issue")
 	}
-
+	if res.RowsAffected == 0 {
+		return common.NotFound("Link not found")
+	}
 	return nil
 }
 
 func (s *IssueService) ListPages(issueID uint64) ([]model.Page, error) {
 	var issue model.Issue
-	if err := s.db.Preload("Pages").First(&issue, issueID).Error; err != nil {
-		return nil, common.NotFound("Issue not found")
+	if err := s.db.First(&issue, issueID).Error; err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, common.NotFound("Issue not found")
+		}
+		return nil, common.Internal("Failed to fetch issue")
 	}
-	return issue.Pages, nil
+
+	var pages []model.Page
+	if err := s.db.
+		Table("pages").
+		Joins("INNER JOIN issue_pages ON issue_pages.page_id = pages.id").
+		Where("issue_pages.issue_id = ? AND pages.project_id = ?", issueID, issue.ProjectID).
+		Order("pages.title ASC").
+		Find(&pages).Error; err != nil {
+		return nil, common.Internal("Failed to list pages for issue")
+	}
+	return pages, nil
 }
 
 func (s *IssueService) ReorderSubIssues(parentID uint64, issueIDs []uint64) error {
@@ -3036,7 +3277,7 @@ func (s *IssueService) moveSubtasks(tx *gorm.DB, parentID, targetProjectID, work
 // ConvertType converts an issue's type to the target type.
 func (s *IssueService) ConvertType(issueID uint64, req *request.ConvertTypeRequest, userID uint64) (*response.IssueResponse, error) {
 	var issue model.Issue
-	if err := s.db.Preload("IssueType").First(&issue, issueID).Error; err != nil {
+	if err := s.db.Preload("IssueType").Preload("AssigneeLinks").Preload("LabelLinks").First(&issue, issueID).Error; err != nil {
 		return nil, common.NotFound("Issue not found")
 	}
 
@@ -3049,12 +3290,72 @@ func (s *IssueService) ConvertType(issueID uint64, req *request.ConvertTypeReque
 		return nil, common.BadRequest("Issue already has this type")
 	}
 
+	var storedCF []model.IssueCustomFieldValue
+	if err := s.db.Where("issue_id = ?", issueID).Find(&storedCF).Error; err != nil {
+		return nil, common.Internal("Failed to load custom field values")
+	}
+	merged := make(map[uint64]interface{}, len(storedCF))
+	for _, row := range storedCF {
+		merged[row.FieldID] = row.Value
+	}
+	if req.CustomFieldValues != nil {
+		for fieldID, v := range req.CustomFieldValues {
+			merged[fieldID] = v
+		}
+	}
+
+	assigneeIDs := make([]uint64, 0, len(issue.AssigneeLinks))
+	for _, link := range issue.AssigneeLinks {
+		assigneeIDs = append(assigneeIDs, link.UserID)
+	}
+	labelIDs := make([]uint64, 0, len(issue.LabelLinks))
+	for _, link := range issue.LabelLinks {
+		labelIDs = append(labelIDs, link.LabelID)
+	}
+	targetTypeID := req.TargetTypeID
+	if err := s.validateMandatoryCustomFields(issue.WorkspaceID, &targetTypeID, merged, fieldVisibilityContext{
+		IssueTypeID: targetTypeID,
+		StateID:     issue.StateID,
+		Priority:    issue.Priority,
+		AssigneeIDs: assigneeIDs,
+		LabelIDs:    labelIDs,
+	}); err != nil {
+		return nil, err
+	}
+
 	oldTypeName := ""
 	if issue.IssueType.ID != 0 {
 		oldTypeName = issue.IssueType.Name
 	}
 
 	tx := s.db.Begin()
+	if tx.Error != nil {
+		return nil, common.Internal("Failed to begin transaction")
+	}
+
+	if req.CustomFieldValues != nil {
+		for fieldID, value := range req.CustomFieldValues {
+			var stringValue string
+			switch v := value.(type) {
+			case string:
+				stringValue = v
+			default:
+				stringValue = fmt.Sprintf("%v", v)
+			}
+			if err := tx.Where("issue_id = ? AND field_id = ?", issueID, fieldID).Delete(&model.IssueCustomFieldValue{}).Error; err != nil {
+				tx.Rollback()
+				return nil, common.Internal("Failed to update custom field values")
+			}
+			if err := tx.Create(&model.IssueCustomFieldValue{
+				IssueID: issueID,
+				FieldID: fieldID,
+				Value:   stringValue,
+			}).Error; err != nil {
+				tx.Rollback()
+				return nil, common.Internal("Failed to update custom field values")
+			}
+		}
+	}
 
 	// Use Table().Where() to avoid GORM's Model(struct) behavior of
 	// re-applying the struct's non-zero field values over the map values.

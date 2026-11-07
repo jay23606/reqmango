@@ -48,7 +48,8 @@ func sequenceTestDB(t *testing.T) *gorm.DB {
 	sqlDB.SetMaxOpenConns(20)
 	t.Cleanup(func() { require.NoError(t, sqlDB.Close()) })
 	require.NoError(t, db.AutoMigrate(&model.Issue{}, &model.ProjectIntakeSetting{}, &model.Webhook{},
-		&model.CustomField{}, &model.IssueTypeField{}, &model.IssueActivity{}, &model.IssueAssignee{}, &model.IssueLabel{},
+		&model.CustomField{}, &model.ConditionalField{}, &model.IssueType{}, &model.IssueTypeImport{},
+		&model.IssueTypeField{}, &model.IssueActivity{}, &model.IssueAssignee{}, &model.IssueLabel{},
 		&model.IssueCycle{}, &model.ModuleIssue{}, &model.ReleaseIssue{}))
 	return db
 }

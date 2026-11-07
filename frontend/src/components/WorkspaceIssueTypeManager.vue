@@ -49,10 +49,13 @@
             </svg>
           </div>
           <div class="flex-1 min-w-0">
-            <div class="flex items-center space-x-2">
+            <div class="flex items-center flex-wrap gap-x-2 gap-y-1">
               <span class="font-medium text-gray-900">{{ type.name }}</span>
+              <span class="badge-level">L{{ type.level || 0 }}</span>
               <span v-if="type.is_default" class="badge-default">{{ t('workspaceIssueType.defaultBadge') }}</span>
               <span v-if="!type.is_active" class="badge-inactive">{{ t('workspaceIssueType.disabledBadge') }}</span>
+              <span v-if="type.parent_type_id" class="badge-parent">{{ t('workspaceIssueType.parentConstraint') }}</span>
+              <span v-if="type.allowed_child_type_ids?.length" class="badge-child">{{ t('workspaceIssueType.childConstraint') }}</span>
             </div>
             <p v-if="type.description" class="text-xs text-gray-500 mt-0.5 truncate">{{ type.description }}</p>
           </div>
@@ -123,6 +126,12 @@
                     </div>
                     <div class="flex-1 min-w-0">
                       <span class="font-medium text-gray-900">{{ formData.name || t('workspaceIssueType.unnamedType') }}</span>
+                      <div class="flex flex-wrap gap-1 mt-1">
+                        <span class="badge-level">L{{ formData.level || 0 }}</span>
+                        <span v-if="formData.parent_type_id" class="badge-parent">{{ t('workspaceIssueType.parentConstraint') }}</span>
+                        <span v-if="(formData.allowed_child_type_ids || []).length" class="badge-child">{{ t('workspaceIssueType.childConstraint') }}</span>
+                        <span v-if="formData.is_default" class="badge-default">{{ t('workspaceIssueType.defaultBadge') }}</span>
+                      </div>
                     </div>
                   </div>
                 </div>
@@ -175,6 +184,53 @@
             <div class="form-group">
               <label class="form-label">{{ t('workspaceIssueType.descriptionLabel') }}</label>
               <input v-model="formData.description" type="text" class="form-input" :placeholder="t('workspaceIssueType.descriptionPlaceholder')" />
+            </div>
+
+            <div class="form-group">
+              <label class="form-label">{{ t('workspaceIssueType.level') }}</label>
+              <select v-model="formData.level" class="form-input">
+                <option :value="0">{{ t('workspaceIssueType.level0') }}</option>
+                <option :value="1">{{ t('workspaceIssueType.level1') }}</option>
+                <option :value="2">{{ t('workspaceIssueType.level2') }}</option>
+                <option :value="3">{{ t('workspaceIssueType.level3') }}</option>
+                <option :value="4">{{ t('workspaceIssueType.level4') }}</option>
+                <option :value="5">{{ t('workspaceIssueType.level5') }}</option>
+              </select>
+            </div>
+
+            <div class="form-group" v-if="(formData.level || 0) > 0">
+              <label class="form-label">{{ t('workspaceIssueType.parentType') }}</label>
+              <select v-model="formData.parent_type_id" class="form-input">
+                <option :value="undefined">{{ t('workspaceIssueType.noConstraint') }}</option>
+                <option v-for="pt in parentTypeOptions" :key="pt.id" :value="pt.id">
+                  {{ pt.name }} (L{{ pt.level }})
+                </option>
+              </select>
+              <p class="text-xs text-gray-500 mt-1">{{ t('workspaceIssueType.parentHint') }}</p>
+            </div>
+
+            <div v-if="(formData.level ?? 0) < 5" class="form-group">
+              <label class="form-label">{{ t('workspaceIssueType.allowedChildTypes') }}</label>
+              <p class="text-xs text-gray-500 mb-2">{{ t('workspaceIssueType.allowedChildHint') }}</p>
+              <div v-if="childTypeOptions.length === 0" class="text-xs text-gray-400 border border-dashed border-gray-300 rounded-lg p-3 text-center">
+                {{ t('workspaceIssueType.allowedChildNoOptions') }}
+              </div>
+              <div v-else class="max-h-40 overflow-y-auto space-y-2 border border-gray-200 rounded-lg p-2 bg-gray-50">
+                <label
+                  v-for="ct in childTypeOptions"
+                  :key="ct.id"
+                  class="flex items-center space-x-2 text-sm text-gray-700 cursor-pointer py-0.5"
+                >
+                  <input
+                    type="checkbox"
+                    class="checkbox"
+                    :checked="allowedChildIdSet.has(ct.id)"
+                    @change="toggleAllowedChild(ct.id)"
+                  />
+                  <span>{{ ct.name }} <span class="text-gray-400 font-mono text-xs">(L{{ ct.level ?? 0 }})</span></span>
+                </label>
+              </div>
+              <p v-if="(formData.allowed_child_type_ids || []).length === 0" class="text-xs text-gray-500 mt-1">{{ t('workspaceIssueType.allowedChildEmpty') }}</p>
             </div>
 
             <div class="form-group">
@@ -256,7 +312,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted, computed } from 'vue'
+import { ref, onMounted, computed, watch } from 'vue'
 import { useI18n } from '@/composables/useI18n'
 import type { IssueType, IssueTypeCreate, IssueTypeUpdate } from '@/types/issue-type'
 import { ISSUE_TYPE_ICONS, ISSUE_TYPE_COLORS, getIconName } from '@/types/issue-type'
@@ -288,9 +344,52 @@ const formData = ref<IssueTypeCreate & IssueTypeUpdate>({
   color: ISSUE_TYPE_COLORS[0],
   icon: ISSUE_TYPE_ICONS[0],
   description: '',
+  level: 0,
+  parent_type_id: undefined,
+  allowed_child_type_ids: [],
   is_default: false,
   sequence: 1
 })
+
+const parentTypeOptions = computed(() => {
+  const targetLevel = (formData.value.level || 0) - 1
+  if (targetLevel < 0) return []
+  const sid = selectedType.value?.id
+  return issueTypes.value.filter(t => (t.level || 0) === targetLevel && t.id !== sid)
+})
+
+const childTypeOptions = computed(() => {
+  const myLevel = formData.value.level ?? 0
+  const sid = selectedType.value?.id
+  return issueTypes.value.filter(t => {
+    if (sid != null && t.id === sid) return false
+    return (t.level ?? 0) > myLevel
+  })
+})
+
+const allowedChildIdSet = computed(() => new Set(formData.value.allowed_child_type_ids || []))
+
+function toggleAllowedChild(typeId: number) {
+  const cur = [...(formData.value.allowed_child_type_ids || [])]
+  const i = cur.indexOf(typeId)
+  if (i >= 0) cur.splice(i, 1)
+  else cur.push(typeId)
+  formData.value.allowed_child_type_ids = cur
+}
+
+watch(
+  () => [formData.value.level, selectedType.value?.id, issueTypes.value.map(t => t.id).join(',')] as const,
+  () => {
+    if ((formData.value.level || 0) === 0) formData.value.parent_type_id = undefined
+    const validParent = new Set(parentTypeOptions.value.map(t => t.id))
+    const pid = formData.value.parent_type_id
+    if (pid != null && !validParent.has(pid)) formData.value.parent_type_id = undefined
+    const validChild = new Set(childTypeOptions.value.map(t => t.id))
+    const allowed = formData.value.allowed_child_type_ids || []
+    const next = allowed.filter(id => validChild.has(id))
+    if (next.length !== allowed.length) formData.value.allowed_child_type_ids = next
+  }
+)
 
 const availableFields = computed(() => {
   const boundIds = new Set(typeFields.value.map((f: any) => f.field_id || f.id))
@@ -325,6 +424,9 @@ function openCreateModal() {
     color: ISSUE_TYPE_COLORS[0],
     icon: ISSUE_TYPE_ICONS[0],
     description: '',
+    level: 0,
+    parent_type_id: undefined,
+    allowed_child_type_ids: [],
     is_default: false,
     sequence: issueTypes.value.length + 1
   }
@@ -339,6 +441,9 @@ async function openEditModal(type: IssueType) {
     color: type.color,
     icon: type.icon,
     description: type.description || '',
+    level: type.level || 0,
+    parent_type_id: type.parent_type_id || undefined,
+    allowed_child_type_ids: type.allowed_child_type_ids ? [...type.allowed_child_type_ids] : [],
     is_default: type.is_default,
     sequence: type.sequence
   }
@@ -352,13 +457,23 @@ function closeDrawer() {
   isCreating.value = false
 }
 
+function payloadForApi(): IssueTypeCreate & IssueTypeUpdate {
+  const fd = formData.value
+  const allowed = fd.allowed_child_type_ids || []
+  return {
+    ...fd,
+    parent_type_id: (fd.level || 0) > 0 ? fd.parent_type_id : undefined,
+    allowed_child_type_ids: [...allowed],
+  }
+}
+
 async function submitForm() {
   if (!formData.value.name) return
   try {
     if (isCreating.value) {
-      await issueTypeApi.createIssueType(props.workspaceId, formData.value)
+      await issueTypeApi.createIssueType(props.workspaceId, payloadForApi())
     } else if (selectedType.value) {
-      await issueTypeApi.updateIssueType(selectedType.value.id, formData.value)
+      await issueTypeApi.updateIssueType(selectedType.value.id, payloadForApi())
     }
     closeDrawer()
     await loadData()
@@ -475,6 +590,18 @@ onMounted(() => {
 
 .badge-inactive {
   @apply px-1.5 py-0.5 text-xs rounded bg-gray-100 text-gray-600;
+}
+
+.badge-level {
+  @apply px-1.5 py-0.5 text-xs rounded bg-blue-100 text-blue-700 font-mono;
+}
+
+.badge-parent {
+  @apply px-1.5 py-0.5 text-xs rounded bg-yellow-100 text-yellow-700;
+}
+
+.badge-child {
+  @apply px-1.5 py-0.5 text-xs rounded bg-purple-100 text-purple-700;
 }
 
 .empty-state {

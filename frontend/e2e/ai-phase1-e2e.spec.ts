@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test'
-import { loginPage, resolveDemo } from './helpers/demo'
+import { createDemoIssue, loginPage, resolveDemo } from './helpers/demo'
 
 const API = 'http://localhost:8000/api/v1'
 const BASE = 'http://localhost:5173'
@@ -48,10 +48,10 @@ test.describe('AI Phase 1 — Agent Automation + Unified Copilot + Result Action
   test('AI03: Automation rule with multiple actions including dispatch_agent', async ({ request }) => {
     const demo = await resolveDemo(request)
 
-    const issueRes = await request.post(
-      `${API}/issues?project_id=${demo.projectId}&workspace_id=${demo.workspaceId}`,
-      { headers: demo.headers, data: { name: `AI03 issue ${Date.now()}`, description: 'e2e' } },
-    )
+    const issueRes = await createDemoIssue(request, demo, {
+      name: `AI03 issue ${Date.now()}`,
+      description: 'e2e',
+    })
     expect(issueRes.status()).toBeLessThan(400)
     const issue = await issueRes.json()
     const issueId = issue.id || issue.data?.id

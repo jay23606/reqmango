@@ -27,6 +27,12 @@ vi.mock('@/composables/useToast', () => ({
   useToast: () => ({ success: vi.fn(), error: vi.fn() }),
 }))
 
+vi.mock('@/composables/usePermission', () => ({
+  useProjectPermissions: () => ({
+    can: (code: string) => ['issue:create', 'issue:edit'].includes(code),
+  }),
+}))
+
 vi.mock('@/components/IssuePickerDialog.vue', () => ({
   default: {
     template: '<div v-if="visible" data-test="picker-dialog" class="picker-mock"><slot/></div>',

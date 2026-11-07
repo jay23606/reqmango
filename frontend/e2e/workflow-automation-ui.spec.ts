@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test'
-import { loginPage, resolveDemo, type DemoContext } from './helpers/demo'
+import { createDemoIssue, loginPage, resolveDemo, type DemoContext } from './helpers/demo'
 
 const API = 'http://localhost:8000/api/v1'
 const BASE = 'http://localhost:5173'
@@ -147,10 +147,11 @@ test.describe('Workflow & Automation — Full UI Journey', () => {
     const auto = await create.json()
     console.log(`Created: [${auto.id}] ${auto.name}`)
 
-    const issueRes = await request.post(
-      `${API}/issues?project_id=${demo.projectId}&workspace_id=${demo.workspaceId}`,
-      { headers: demo.headers, data: { name: `Auto exec ${Date.now()}`, description: 'e2e', priority: 'high' } },
-    )
+    const issueRes = await createDemoIssue(request, demo, {
+      name: `Auto exec ${Date.now()}`,
+      description: 'e2e',
+      priority: 'high',
+    })
     const issue = await issueRes.json()
     const issueId = issue.id || issue.data?.id
 

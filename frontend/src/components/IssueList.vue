@@ -11,6 +11,7 @@
         <div class="flex items-center gap-1.5 ml-auto">
           <!-- 快速创建切换 -->
           <button
+            v-if="canCreateIssue"
             @click="showQuickCreate = !showQuickCreate"
             class="flex items-center gap-1.5 px-2.5 py-1.5 text-xs text-gray-600 border border-gray-200 rounded-md hover:bg-gray-50 transition-colors"
             :class="{ 'bg-gray-100 border-gray-300': showQuickCreate }"
@@ -50,7 +51,7 @@
           </button>
 
           <!-- 新建 -->
-          <button @click="goToCreate" class="flex items-center gap-1.5 px-3 py-1.5 bg-neutral-900 text-white text-xs rounded-md hover:bg-neutral-800 transition-colors font-medium">
+          <button v-if="canCreateIssue" @click="goToCreate" class="flex items-center gap-1.5 px-3 py-1.5 bg-neutral-900 text-white text-xs rounded-md hover:bg-neutral-800 transition-colors font-medium">
             <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4" />
             </svg>
@@ -62,10 +63,12 @@
 
     <!-- 快速创建 -->
     <QuickCreateInput
-      v-if="showQuickCreate"
+      v-if="canCreateIssue && showQuickCreate"
       :project-id="projectId"
       :workspace-id="workspaceId"
       :issue-types="issueTypes"
+      :default-type-id="defaultTypeId ?? undefined"
+      :default-state-id="defaultStateId ?? undefined"
       @created="onQuickCreated"
     />
 
@@ -395,6 +398,18 @@ import { markAutoTriagePending } from '@/utils/autoTriagePref'
 const props = defineProps<{ projectId: number; workspaceId: number; rql?: string; filterSortBy?: string; filterSortDir?: string; filterSortConfig?: string; filterGroupBy?: string; filterSubGroupBy?: string; searchTerm?: string; columns?: string[] }>()
 const { can: canInProject } = useProjectPermissions(() => props.projectId)
 const canDeleteIssues = computed(() => canInProject('issue:delete'))
+const canCreateIssue = computed(() => canInProject('issue:create'))
+const defaultTypeId = computed(() => {
+  const d = issueTypes.value.find((t: any) => t.is_default)
+  return d?.id ?? null
+})
+const defaultStateId = computed(() => {
+  const preferred =
+    states.value.find((s: any) => s.is_default) ||
+    states.value.find((s: any) => s.group === 'unstarted') ||
+    states.value.find((s: any) => s.group === 'backlog')
+  return preferred?.id ?? null
+})
 const router = useRouter()
 const route = useRoute()
 const { t, locale } = useI18n()
@@ -944,6 +959,10 @@ watch([() => props.filterSortBy, () => props.filterSortDir, () => props.filterSo
 watch(() => props.filterGroupBy, () => {
   page.value = 1
   loadIssues()
+})
+
+watch(canCreateIssue, (ok) => {
+  if (!ok) showQuickCreate.value = false
 })
 
 watch(issues, (newIssues) => {

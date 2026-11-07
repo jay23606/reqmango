@@ -1,4 +1,5 @@
 import { test, expect, type Page } from '@playwright/test'
+import { buildIssueCreateBody } from './helpers/demo'
 
 const BASE = 'http://localhost:5173'
 const API = 'http://localhost:8000/api/v1'
@@ -46,9 +47,13 @@ async function ensureChatIssue(request: any) {
   const project = projects.find((p: any) => p.identifier === 'CORE') || projects[0]
   projectId = project.id
 
+  const headers = { ...auth(), 'Content-Type': 'application/json' }
   const issueRes = await request.post(`${API}/issues?project_id=${projectId}&workspace_id=${wsId}`, {
-    data: { name: `聊天 E2E ${Date.now()}`, description: '用于聊天功能验证' },
-    headers: auth(),
+    headers,
+    data: await buildIssueCreateBody(request, headers, projectId, {
+      name: `聊天 E2E ${Date.now()}`,
+      description: '用于聊天功能验证',
+    }),
   })
   const issueBody = await issueRes.json()
   issueId = issueBody.id || issueBody.data?.id
