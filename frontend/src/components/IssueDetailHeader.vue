@@ -60,6 +60,16 @@
       <span v-if="copied" class="text-[10px] text-green-600">{{ t('issue.copied') }}</span>
 
       <button
+        v-if="canMerge"
+        type="button"
+        data-test="merge-into-btn"
+        class="px-3 py-1.5 text-xs font-medium text-gray-700 border border-gray-200 rounded-md hover:bg-gray-50 transition-colors"
+        @click="$emit('merge')"
+      >
+        {{ t('issue.mergeInto') }}
+      </button>
+
+      <button
         v-if="canDelete"
         data-test="delete-btn"
         class="px-3 py-1.5 text-xs font-medium text-red-500 border border-red-200 rounded-md hover:bg-red-50 transition-colors"
@@ -86,6 +96,7 @@ const props = defineProps<{
 const emit = defineEmits<{
   back: []
   delete: []
+  merge: []
   toggleWatch: []
   'update:title': [title: string]
 }>()
@@ -94,6 +105,7 @@ const { t } = useI18n()
 const toast = useToast()
 const { can } = useProjectPermissions(() => props.issue?.project_id)
 const canDelete = computed(() => can('issue:delete'))
+const canMerge = computed(() => can('issue:edit'))
 const copied = ref(false)
 const localTitle = ref(props.issue?.name || '')
 const savingTitle = ref(false)

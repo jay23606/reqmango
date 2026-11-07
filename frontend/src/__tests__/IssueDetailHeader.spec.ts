@@ -29,6 +29,14 @@ describe('IssueDetailHeader', () => {
     mockGet.mockResolvedValue({ data: { permissions: ['issue:edit'], role_level: 15 } })
   })
 
+  it('shows merge into when user can edit', async () => {
+    const wrapper = mount(IssueDetailHeader, { props: { issue: mockIssue } })
+    await flushPromises()
+    expect(wrapper.find('[data-test="merge-into-btn"]').exists()).toBe(true)
+    await wrapper.find('[data-test="merge-into-btn"]').trigger('click')
+    expect(wrapper.emitted('merge')).toBeTruthy()
+  })
+
   it('shows delete only to users who may delete in the project', async () => {
     const member = mount(IssueDetailHeader, { props: { issue: mockIssue } })
     await flushPromises()

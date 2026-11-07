@@ -237,8 +237,14 @@ describe('bulk operations API', () => {
 
   it('mergeIssues should POST merge', async () => {
     mockPost.mockResolvedValue({ data: { id: 2 } })
-    await mergeIssues(1, 2)
-    expect(mockPost).toHaveBeenCalledWith('/issues/1/merge', { target_issue_id: 2 })
+    await mergeIssues(2, [1])
+    expect(mockPost).toHaveBeenCalledWith('/issues/merge', {
+      target_issue_id: 2,
+      source_issue_ids: [1],
+      keep_source_comments: false,
+      keep_source_labels: true,
+      keep_source_assignees: true,
+    })
   })
 })
 
