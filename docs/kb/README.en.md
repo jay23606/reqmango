@@ -2,7 +2,7 @@
 
 The KB is the **single source of truth** for the reqmango system, always describing the current actual state.
 
-**Last Updated**: 2026-10-25
+**Last Updated**: 2026-11-07
 
 ## Maintenance Principles
 

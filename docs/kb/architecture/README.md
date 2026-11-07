@@ -2,7 +2,7 @@
 
 reqmango 采用前后端分离架构，Go + Vue 3 全栈。
 
-**最后更新**: 2026-10-25
+**最后更新**: 2026-11-07
 
 > 本文描述**分层与职责**，不维护文件数/路由数这类会随手改的清单数字。
 > 需要具体清单时，直接看对应目录，或 `backend/internal/router/router.go`（全部路由注册的唯一入口）。
@@ -104,13 +104,14 @@ reqmango 采用前后端分离架构，Go + Vue 3 全栈。
 | Saved Views（保存视图） | ✅ | ✅ | JSONB 筛选/排序/列配置 + 默认视图 |
 | Pages（页面文档） | ✅ | ✅ | 树形层级 + 归档/恢复 + Markdown |
 | Release（发布管理） | ✅ | ✅ | CRUD + Issue 关联 + 进度 |
-| Estimate（估算） | ✅ | ✅ | Points/Categories/Time 三种模式 |
+| Estimate（估算） | ✅ | ✅ | 项目目录 Points/Categories/Time；**Issue 挂 `estimate_point_id`（points）**；设置页 `EstimatePointManager`；mutate 需 `settings:manage`；categories/time 挂到 Issue 仍 Later |
 | Attachment（附件） | ✅ | ✅ | 文件上传 + 元数据 |
 | Relation（关联类型） | ✅ | ✅ | 自定义 in/out 命名 + Issue 关联 |
 | RQL（查询语言） | ✅ | ✅ | 自定义 DSL 搜索 |
 | AI（智能助手） | ✅ | ✅ | Chat SSE + NL Search + Smart Create + Analyze（Issue/项目）+ Page AI + Triage；项目总结可存 Page；NL→自动化预览；Dashboard `ai_summary` |
 | Dashboard（仪表盘） | ✅ | ✅ | Widget 网格：图表/数字卡/燃尽/报表/列表 + `ai_summary`（打开加载、可刷新；无定时出报） |
-| Time Tracking（工时） | ✅ | ✅ | Start/Stop/List/Summary |
+| Time Tracking（工时） | ✅ | ✅ | Start/Stop/手动录入/`duration` **秒**；List/Summary；`time_track:view|create|delete`；侧栏展示累计已记工时 |
+| Merge Duplicates（合并重复） | ✅ | ✅ | `POST /issues/merge` 软合并（不删源）；详情「合并到…」 |
 | Recurring（重复工作项） | ✅ | ✅ | daily/weekly/monthly/cron + UI 配置 |
 | Intake & Triage（接收分诊） | ✅ | ✅ | 公开提交 + Accept/Reject + AI 分析 |
 | Conditional Fields（条件字段） | ✅ | ✅ | 字段显隐规则 |

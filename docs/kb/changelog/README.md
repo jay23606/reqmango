@@ -2,6 +2,22 @@
 
 ---
 
+## 2026-11-07 — 工时 / 估点 P0 + 合并重复
+
+**类型**: Feature sync（PR #33 / #34）
+
+**变更内容**:
+- Issue 持久化 `estimate_point_id`；项目设置挂载估点管理；CSV `estimate`→点
+- 工时：手动录入、`duration` 秒、`time_track:*` / 估点 mutate `settings:manage`
+- 软合并重复工作项（`POST /issues/merge`）
+- PRD §15 与模块表对齐已实现范围（审批/大盘仍 Later）
+
+**影响文件**:
+- `docs/kb/architecture/README.md(.en)`, `data-model.md(.en)`, `frontend.md`, `backend-go.md(.en)`
+- `docs/kb/PRD.md`, `PRD.en.md`, `README.md(.en)`
+
+---
+
 ## 2026-09-26 — 设计文档 / KB 刷新 · Agent 平台归档
 
 **类型**: Docs

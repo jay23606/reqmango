@@ -1,6 +1,6 @@
 # Frontend Architecture（前端架构）
 
-**最后更新**: 2026-10-25
+**最后更新**: 2026-11-07
 
 > 目录树列的是**结构与约定**。文件数量增长很快，具体清单以 `frontend/src/` 为准。
 
@@ -34,6 +34,7 @@ frontend/src/
 │   ├── index.ts          — Axios 实例 + JWT 拦截器
 │   ├── auth.ts / workspace.ts / project.ts
 │   ├── issue.ts / cycle.ts / module.ts / page.ts
+│   ├── time-track.ts / estimate-point.ts
 │   ├── ai.ts             — AI Chat SSE / Search / Create
 │   ├── workflow.ts / automation.ts / issue-type.ts
 │   ├── custom-field.ts / conditional-field.ts / saved-view.ts
@@ -76,9 +77,11 @@ frontend/src/
 │   │                       AIChartRenderer, AIResultActions …
 │   ├── Dashboard         — DashboardGrid, WidgetCard（含 ai_summary）, WidgetConfigPanel
 │   ├── Issue             — IssueCard, IssueList, IssueKanban, IssueDetailPanel,
-│   │                       SubIssuePanel, IssueTreeView, IssueGantt, IssueCalendar
+│   │                       IssuePropertySidebar（含估点选择 / 已记工时）,
+│   │                       SubIssuePanel, IssueTreeView, IssueGantt, IssueCalendar,
+│   │                       TimeTrackPanel（计时 + 手动分钟录入）, MergeIntoIssueDialog
 │   ├── Cycle / Module    — CycleCard, CycleBurndownChart, ModuleTree, ModuleDetailPanel …
-│   ├── Config            — CustomField*, ConditionalField*
+│   ├── Config            — CustomField*, ConditionalField*, EstimatePointManager（项目设置）
 │   ├── Workflow          — WorkflowManager, WorkflowRule*, StateTransition,
 │   │                       WorkflowVisualization
 │   ├── Automation        — AutomationManager, AutomationRuleBuilder（含 dispatch_agent、

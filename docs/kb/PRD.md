@@ -1,6 +1,6 @@
 # reqmango 产品需求文档
 
-> **最后更新**: 2026-10-30  
+> **最后更新**: 2026-11-07  
 > **状态**: 现行（KB 真相来源）  
 > **产品方向**: 原生项目管理 + 原生 AI 项目管理路径 AI（Intake / Analyze / 自动化 / 仪表盘摘要）。  
 > **非方向**: Harness / Loop / 独立 Agent 控制台式 Agent 控制台产品化（已归档，见 [superseded/agent-platform](https://github.com/vinthuy/reqmango/blob/master/docs/superseded/agent-platform/README.md)）。
@@ -437,20 +437,25 @@ reqmango 支持灵活的自动化规则，帮助团队减少重复性操作。�
 
 ---
 
-## 15. 时间跟踪
+## 15. 时间跟踪与估算
 
 ### 15.1 功能概述
 
-reqmango 提供原生的时间跟踪功能，让团队记录和管理工作时间。
+reqmango 提供原生工时记录，以及项目级估点目录与工作项估点绑定。时长单位为**秒**。
 
-### 15.2 核心功能点
+### 15.2 核心功能点（已实现）
 
 | 功能 | 描述 |
 |------|------|
-| **时间记录** | 手动或自动记录工作时间 |
-| **时间估算** | 设置工作项预估时间 |
-| **时间报告** | 查看时间统计和趋势 |
-| **时间审批** | 时间记录审批流程 |
+| **计时** | 工作项上 Start / Stop 运行中计时器 |
+| **手动记工时** | 按分钟录入，后端存秒；需 `time_track:create` |
+| **工时汇总** | Issue / 项目 Summary；侧栏展示累计已记 |
+| **估点目录** | 项目设置配置 Points（Categories/Time 目录 API 已有） |
+| **工作项估点** | Issue 持久化 `estimate_point_id`；CSV `estimate` 列按点值映射 |
+
+### 15.3 尚未产品化
+
+工时审批流、估点↔小时换算大盘、categories/time 模式挂到 Issue、报表大盘。
 
 ---
 

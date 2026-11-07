@@ -1,6 +1,6 @@
 # Go Backend Architecture
 
-**Last updated**: 2026-10-25
+**Last updated**: 2026-11-07
 
 > The tree lists the **main path** and representative files only. Files come and go; when in
 > doubt read the directory. What this page promises is layer responsibilities and extension
@@ -227,7 +227,9 @@ read `internal/router/router.go`, or run `go run ./cmd/route_audit` for a machin
 | `/projects/:id/ai/` | Chat/search/charts/triage; `analyze` (issue or project); `sprint-plan`; `automation-preview` (NL draft, not persisted) |
 | `/projects/:id/automations` | Automation rule CRUD + execution (incl. `dispatch_agent`) |
 | `/projects/:id/dashboards` | Dashboard CRUD + widgets; `GET .../full` returns widget_data (incl. `ai_summary`) |
-| `/issues/` | CRUD + search + batch + import/export + tree + relations + time tracking + recurrence |
+| `/projects/:id/estimate-points` | Estimate catalogs / settings; writes need `settings:manage` |
+| `/issues/` | CRUD (incl. `estimate_point_id`) + search + batch + import/export (CSV `estimate`→point) + tree + relations + soft-merge + recurrence |
+| `/issues/:id/time-tracks` | Manual create / start / stop / list / summary / delete; `time_track:*`; `duration` seconds |
 | `/comments/` | CRUD + replies + resolve |
 | `/custom-fields/` | CRUD + options + conditional rules |
 | `/templates/` | Project templates + type templates + work item templates |

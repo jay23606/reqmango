@@ -1,6 +1,6 @@
 # Go Backend Architecture（Go 后端架构）
 
-**最后更新**: 2026-10-25
+**最后更新**: 2026-11-07
 
 > 目录树只列**主链路**和代表性文件。文件会持续增删，具体清单以目录为准——
 > 这份文档承诺的是分层职责和扩展点，不是文件数量。
@@ -225,7 +225,9 @@ func ParsePagination(limitStr, offsetStr string, defaultLimit, maxLimit int) Pag
 | `/projects/:id/ai/` | 聊天/搜索/图表/分诊；`analyze`（Issue 或项目）；`sprint-plan`；`automation-preview`（NL→规则草稿，不落库） |
 | `/projects/:id/automations` | 自动化规则 CRUD + 执行（含 `dispatch_agent`） |
 | `/projects/:id/dashboards` | Dashboard CRUD + widgets；`GET .../full` 返回 widget_data（含 `ai_summary`） |
-| `/issues/` | CRUD + 搜索 + 批量 + 导入/导出 + 树 + 关联 + 工时 + 周期性 |
+| `/projects/:id/estimate-points` | 估点目录 / settings；写操作 `settings:manage` |
+| `/issues/` | CRUD（含 `estimate_point_id`）+ 搜索 + 批量 + 导入/导出（CSV `estimate`→点）+ 树 + 关联 + 工时 + 软合并 + 周期性 |
+| `/issues/:id/time-tracks` | 手动录入 / start / stop / list / summary / delete；`time_track:*`；`duration` 秒 |
 | `/comments/` | CRUD + 回复 + 解决 |
 | `/custom-fields/` | CRUD + 选项 + 条件规则 |
 | `/templates/` | 项目模板 + 类型模板 + 工作项模板 |

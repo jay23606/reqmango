@@ -2,7 +2,7 @@
 
 reqmango uses a decoupled frontend-backend architecture: Go + Vue 3, full stack.
 
-**Last updated**: 2026-10-25
+**Last updated**: 2026-11-07
 
 > This page describes **layers and responsibilities**, and deliberately does not maintain
 > inventory numbers (file counts, route counts) that change with every commit. For the
@@ -106,13 +106,14 @@ Versions come from `backend/go.mod` and `frontend/package.json`; see [Tech Stack
 | Saved Views | ✅ | ✅ | JSONB filters/sort/column config + default view |
 | Pages | ✅ | ✅ | Tree hierarchy + archive/restore + Markdown |
 | Release | ✅ | ✅ | CRUD + Issue association + progress |
-| Estimate | ✅ | ✅ | Points/Categories/Time three modes |
+| Estimate | ✅ | ✅ | Project catalogs Points/Categories/Time; **issues store `estimate_point_id` (points)**; settings `EstimatePointManager`; mutate needs `settings:manage`; categories/time on issues still Later |
 | Attachment | ✅ | ✅ | File upload + metadata |
 | Relation | ✅ | ✅ | Custom in/out naming + Issue association |
 | RQL | ✅ | ✅ | Custom DSL search |
 | AI | ✅ | ✅ | Chat SSE + NL Search + Smart Create + Analyze (issue/project) + Page AI + Triage; project summary→Page; Dashboard `ai_summary` |
 | Dashboard | ✅ | ✅ | Widget grid incl. charts/number/burndown/report/list + `ai_summary` (load on open, refresh; no scheduled reports) |
-| Time Tracking | ✅ | ✅ | Start/Stop/List/Summary |
+| Time Tracking | ✅ | ✅ | Start/Stop/manual log; `duration` in **seconds**; List/Summary; `time_track:view|create|delete`; sidebar shows spent totals |
+| Merge Duplicates | ✅ | ✅ | `POST /issues/merge` soft-merge (keeps source); detail 「Merge into…」 |
 | Recurring | ✅ | ✅ | daily/weekly/monthly/cron + UI config |
 | Intake & Triage | ✅ | ✅ | Public submission + Accept/Reject + AI analysis |
 | Conditional Fields | ✅ | ✅ | Field visibility rules |

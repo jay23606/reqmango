@@ -1,6 +1,6 @@
 # Data Model
 
-**Last updated**: 2026-10-25
+**Last updated**: 2026-11-07
 
 The production schema is whatever `AutoMigrate` in `backend/cmd/server/main.go` creates. The 131 tables below are that list. Names come from GORM's naming strategy, including each model's `TableName()`. Structs in `internal/model` that exist only as JSON are not tables; they are listed at the end.
 
@@ -41,7 +41,7 @@ Primary keys are `uint64`, not UUIDs. The `depth` comments on Issue and Page cap
 
 | Table | Model | Stores |
 |-------|-------|--------|
-| `issues` | Issue | Work items |
+| `issues` | Issue | Work items (nullable `estimate_point_id` → `estimate_points`) |
 | `issue_assignees` | IssueAssignee | Assignees |
 | `issue_labels` | IssueLabel | Label links |
 | `issue_cycles` | IssueCycle | Cycle links |
@@ -52,7 +52,7 @@ Primary keys are `uint64`, not UUIDs. The `depth` comments on Issue and Page cap
 | `labels` | Label | Labels |
 | `comments` | Comment | Comments. Agent suggestions are JSON on the comment, not their own table |
 | `attachments` | Attachment | Attachment metadata |
-| `time_tracks` | TimeTrack | Time entries |
+| `time_tracks` | TimeTrack | Time entries; `duration` in **seconds**; running (`ended_at` null) or completed |
 | `recurrence_rules` | RecurrenceRule | Recurrence rules |
 | `relation_types` | RelationType | Relation types (inward/outward names) |
 | `issue_relations` | IssueRelation | Links between work items |

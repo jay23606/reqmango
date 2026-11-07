@@ -1,6 +1,6 @@
 # Data Model（数据模型）
 
-**最后更新**: 2026-10-25
+**最后更新**: 2026-11-07
 
 生产库的表由 `backend/cmd/server/main.go` 的 `AutoMigrate` 创建。下面 131 张表就是这份清单，表名用 GORM 的命名策略（含各模型的 `TableName()`）解析得出。`internal/model` 里还有只当 JSON 用的结构体，不会建表，列在文末。
 
@@ -41,7 +41,7 @@
 
 | 表 | 模型 | 存什么 |
 |----|------|--------|
-| `issues` | Issue | 工作项 |
+| `issues` | Issue | 工作项（含可空 `estimate_point_id` → `estimate_points`） |
 | `issue_assignees` | IssueAssignee | 负责人 |
 | `issue_labels` | IssueLabel | 标签关联 |
 | `issue_cycles` | IssueCycle | 周期关联 |
@@ -52,7 +52,7 @@
 | `labels` | Label | 标签 |
 | `comments` | Comment | 评论。Agent 建议以 JSON 存在评论上，不是独立表 |
 | `attachments` | Attachment | 附件元数据 |
-| `time_tracks` | TimeTrack | 工时 |
+| `time_tracks` | TimeTrack | 工时条目；`duration` 为**秒**；可运行中（`ended_at` 空）或已结束 |
 | `recurrence_rules` | RecurrenceRule | 重复创建规则 |
 | `relation_types` | RelationType | 关联类型（in/out 名称） |
 | `issue_relations` | IssueRelation | 工作项之间的关联 |

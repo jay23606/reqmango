@@ -1,6 +1,6 @@
 # reqmango Product Requirements Document
 
-> **Last updated**: 2026-10-30
+> **Last updated**: 2026-11-07
 > **Status**: Current (source of truth for the knowledge base)
 > **Product direction**: native project management plus a native AI project-management path (Intake / Analyze / automation / dashboard summaries).
 > **Not the direction**: productizing Harness / Loop / a standalone Agent console (archived — see [superseded/agent-platform](https://github.com/vinthuy/reqmango/blob/master/docs/superseded/agent-platform/README.md)).
@@ -439,20 +439,25 @@ reqmango supports flexible automation rules so teams can cut repetitive work: wh
 
 ---
 
-## 15. Time tracking
+## 15. Time tracking and estimates
 
 ### 15.1 Overview
 
-reqmango ships native time tracking so teams can record and manage working hours.
+reqmango ships native time tracking plus project estimate catalogs and per-issue point binding. Duration is stored in **seconds**.
 
-### 15.2 Core features
+### 15.2 Core features (shipped)
 
 | Feature | Description |
 |---------|-------------|
-| **Time entries** | Log time manually or automatically |
-| **Time estimates** | Set an estimate on a work item |
-| **Time reports** | View statistics and trends |
-| **Time approval** | Approval flow for time entries |
+| **Timer** | Start / Stop a running timer on an issue |
+| **Manual log** | Enter minutes in UI; API stores seconds; needs `time_track:create` |
+| **Summaries** | Issue / project Summary; sidebar shows spent totals |
+| **Estimate catalog** | Project settings for Points (Categories/Time catalog APIs exist) |
+| **Issue estimate** | Persists `estimate_point_id`; CSV `estimate` maps by point value |
+
+### 15.3 Not productized yet
+
+Time-entry approval, points↔hours conversion dashboards, categories/time modes on issues, reporting suite.
 
 ---
 

@@ -1,6 +1,6 @@
 # Pipeline Status（功能管线状态）
 
-最后更新：2026-10-25
+最后更新：2026-11-07
 
 ---
 
@@ -36,6 +36,8 @@
 
 | 功能 | 状态 | 文档 |
 |------|------|------|
+| 工时记录与估点 P0 | ✅ | [SRS](../specs/2026-11-07-time-tracking-estimates.md) · [acceptance](acceptance/2026-11-07-time-tracking-estimates.md) · PR #34 |
+| 合并重复工作项（软合并） | ✅ | [SRS](../specs/2026-11-07-merge-duplicates.md) · PR #33 |
 | 产品化主路径（原生 PM + 核心定制门禁） | ✅ PASS | [acceptance](acceptance/2026-09-25-product-core-qa.md) §H |
 | AI 项目管理（原生 AI 项目管理路径 P1–2+B1–C2） | ✅ PASS | [redesign](../superpowers/specs/2026-09-25-ai-project-management-redesign.md) · [preflight](acceptance/2026-09-25-release-preflight.md) |
 | 工作项导入预校验与字段映射（Plane 差距 Task 3） | ✅ PASS | [design](../superpowers/specs/2026-10-24-issue-import-preview-design.md) · [plan](../superpowers/plans/2026-10-24-issue-import-preview.md) |

@@ -1,6 +1,6 @@
 # Frontend Architecture
 
-**Last updated**: 2026-10-25
+**Last updated**: 2026-11-07
 
 > The tree documents **structure and conventions**. File counts grow fast; when in doubt read
 > `frontend/src/`.
@@ -35,6 +35,7 @@ frontend/src/
 │   ├── index.ts          — Axios instance + JWT interceptor
 │   ├── auth.ts / workspace.ts / project.ts
 │   ├── issue.ts / cycle.ts / module.ts / page.ts
+│   ├── time-track.ts / estimate-point.ts
 │   ├── ai.ts             — AI chat SSE / search / create
 │   ├── workflow.ts / automation.ts / issue-type.ts
 │   ├── custom-field.ts / conditional-field.ts / saved-view.ts
@@ -77,9 +78,11 @@ frontend/src/
 │   │                       AIChartRenderer, AIResultActions …
 │   ├── Dashboard         — DashboardGrid, WidgetCard (incl. ai_summary), WidgetConfigPanel
 │   ├── Issue             — IssueCard, IssueList, IssueKanban, IssueDetailPanel,
-│   │                       SubIssuePanel, IssueTreeView, IssueGantt, IssueCalendar
+│   │                       IssuePropertySidebar (estimate picker / spent),
+│   │                       SubIssuePanel, IssueTreeView, IssueGantt, IssueCalendar,
+│   │                       TimeTrackPanel (timer + manual minutes), MergeIntoIssueDialog
 │   ├── Cycle / Module    — CycleCard, CycleBurndownChart, ModuleTree, ModuleDetailPanel …
-│   ├── Config            — CustomField*, ConditionalField*
+│   ├── Config            — CustomField*, ConditionalField*, EstimatePointManager (project settings)
 │   ├── Workflow          — WorkflowManager, WorkflowRule*, StateTransition,
 │   │                       WorkflowVisualization
 │   ├── Automation        — AutomationManager, AutomationRuleBuilder (incl. dispatch_agent,
