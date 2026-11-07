@@ -1,4 +1,4 @@
-# Roadmap
+﻿# Roadmap
 
 This is a direction, not a schedule. Work happens in the open as issues and
 pull requests; anything here can move if a bug, a security report, or a
@@ -42,7 +42,7 @@ Process: [docs/dev/sdd.md](docs/dev/sdd.md). Historical notes:
 
 ## Later — deeper workflows
 
-- [Merge duplicate work items](docs/specs/2026-11-07-merge-duplicates.md) (draft SRS; intake already suggests duplicates) — **next candidate**
+- [x] [Merge duplicate work items](docs/specs/2026-11-07-merge-duplicates.md) ([PR #33](https://github.com/vinthuy/reqmango/pull/33))
 - Time tracking and estimate categories
 - Recurring work items
 - Release management polish and a release picker in the item view

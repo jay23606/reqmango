@@ -1,4 +1,4 @@
-# Changelog
+﻿# Changelog
 
 All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project uses
@@ -10,6 +10,7 @@ under **Changed** / **Upgrade notes**.
 
 ### Added
 
+- Soft-merge duplicate issues into a target without deleting sources ([PR #33](https://github.com/vinthuy/reqmango/pull/33)): cancelled state when available, duplicate relation, label/assignee union, detail UI 「合并到…」.
 - Work-item gap tranche from ROADMAP Next ([PR #32](https://github.com/vinthuy/reqmango/pull/32)):
   mandatory and conditional custom fields, list/board quick create with
   `issue:create` gating, type hierarchy rules and admin fields, sub-items panel

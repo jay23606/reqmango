@@ -21,7 +21,7 @@
 
 | 规格 | 主题 | 状态 |
 |------|------|------|
-| [2026-11-07-merge-duplicates.md](./2026-11-07-merge-duplicates.md) | 合并重复工作项 | 已冻结 |
+| [2026-11-07-merge-duplicates.md](./2026-11-07-merge-duplicates.md) | 合并重复工作项 | 已实现 |
 
 ## 既有
 
