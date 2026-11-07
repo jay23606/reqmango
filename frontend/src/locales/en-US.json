@@ -162,6 +162,7 @@
     "modulePlaceholder": "Select module",
     "release": "Release",
     "releasePlaceholder": "Select release",
+    "estimate": "Estimate",
     "startDate": "Start Date",
     "endDate": "End Date",
     "targetDate": "Target Date",
@@ -3768,10 +3769,15 @@
     "stop": "Stop",
     "running": "Running...",
     "noEntries": "No time entries yet.",
+    "noDescription": "No description",
     "totalHours": "Total Hours",
     "entries": "entries",
     "projectSummary": "Project Time Summary",
-    "byUser": "By User"
+    "byUser": "By User",
+    "manualMinutes": "Minutes",
+    "description": "Description",
+    "logTime": "Log time",
+    "spent": "Spent"
   },
   "integrations": {
     "title": "Integrations",

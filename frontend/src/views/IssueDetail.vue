@@ -161,6 +161,7 @@
           @update:cycle="handleCycleUpdate"
           @update:module="handleModuleUpdate"
           @update:release="handleReleaseUpdate"
+          @update:estimate="handleEstimateUpdate"
           @update:start-date="(d: any) => instantUpdate('start_date', d + 'T00:00:00Z')"
           @update:target-date="(d: any) => instantUpdate('target_date', d + 'T00:00:00Z')"
           @update:labels="handleLabelsUpdate"
@@ -876,6 +877,10 @@ async function handleModuleUpdate(moduleId: number | null) {
 // Release update
 async function handleReleaseUpdate(releaseId: number | null) {
   await instantUpdate('release_id', releaseId ?? 0)
+}
+
+async function handleEstimateUpdate(estimatePointId: number | null) {
+  await instantUpdate('estimate_point_id', estimatePointId ?? 0)
 }
 
 // Navigation

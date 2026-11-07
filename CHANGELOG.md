@@ -10,6 +10,7 @@ under **Changed** / **Upgrade notes**.
 
 ### Added
 
+- Time tracking & estimate points P0: persist `estimate_point_id` on issues, project Estimate settings UI, manual time log (seconds), `time_track:*` / `settings:manage` enforcement, CSV estimate import mapping (`docs/specs/2026-11-07-time-tracking-estimates.md`).
 - Soft-merge duplicate issues into a target without deleting sources ([PR #33](https://github.com/vinthuy/reqmango/pull/33)): cancelled state when available, duplicate relation, label/assignee union, detail UI 「合并到…」.
 - Work-item gap tranche from ROADMAP Next ([PR #32](https://github.com/vinthuy/reqmango/pull/32)):
   mandatory and conditional custom fields, list/board quick create with
