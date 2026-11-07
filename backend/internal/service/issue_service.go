@@ -5,6 +5,7 @@ import (
 	"encoding/csv"
 	"errors"
 	"fmt"
+	"html"
 	"io"
 	"log"
 	"strconv"
@@ -3637,16 +3638,22 @@ func buildTreeIssueFromModel(issue *model.Issue, countMap map[uint64]int64) *res
 	return resp
 }
 
-// MergeDuplicates merges multiple duplicate issues into a target issue.
-// Source issues will be deleted after merging.
+// MergeDuplicates soft-merges source issues into a target (SRS 2026-11-07-merge-duplicates).
+// Sources are kept (not deleted): cancelled-like state when available, "重复" relation to target,
+// labels/assignees unioned onto target, merge summary appended to target description.
 func (s *IssueService) MergeDuplicates(req *request.MergeDuplicatesRequest, userID uint64) (*response.IssueResponse, error) {
+	if len(req.SourceIssueIDs) == 0 {
+		return nil, common.BadRequest("No source issues provided")
+	}
+	for _, sid := range req.SourceIssueIDs {
+		if sid == req.TargetIssueID {
+			return nil, common.BadRequest("Cannot merge an issue into itself")
+		}
+	}
+
 	var targetIssue model.Issue
 	if err := s.db.Preload("LabelLinks").Preload("AssigneeLinks").First(&targetIssue, req.TargetIssueID).Error; err != nil {
 		return nil, common.NotFound("Target issue not found")
-	}
-
-	if len(req.SourceIssueIDs) == 0 {
-		return nil, common.BadRequest("No source issues provided")
 	}
 
 	var sourceIssues []model.Issue
@@ -3654,70 +3661,172 @@ func (s *IssueService) MergeDuplicates(req *request.MergeDuplicatesRequest, user
 		Where("id IN ?", req.SourceIssueIDs).Find(&sourceIssues).Error; err != nil {
 		return nil, common.Internal("Failed to fetch source issues")
 	}
-
-	if len(sourceIssues) == 0 {
-		return nil, common.BadRequest("No source issues found")
+	if len(sourceIssues) != len(req.SourceIssueIDs) {
+		return nil, common.NotFound("One or more source issues not found")
 	}
+	for _, source := range sourceIssues {
+		if source.ProjectID != targetIssue.ProjectID || source.WorkspaceID != targetIssue.WorkspaceID {
+			return nil, common.BadRequest("Source and target issues must be in the same project")
+		}
+	}
+
+	// P0 always unions labels and assignees onto the target (SRS).
+	keepLabels, keepAssignees := true, true
+	_ = req.KeepSourceComments // comments/attachments not migrated in P0
+
+	dupRelType, err := s.findDuplicateRelationType(targetIssue.WorkspaceID)
+	if err != nil {
+		return nil, err
+	}
+
+	cancelledStateID, _ := s.findCancelledStateID(targetIssue.ProjectID, targetIssue.WorkspaceID)
 
 	tx := s.db.Begin()
-
-	if req.KeepSourceLabels {
-		// Determine which source label IDs belong to the target issue's project
-		validLabelIDs := make(map[uint64]bool)
-		var allSourceLabelIDs []uint64
-		for _, source := range sourceIssues {
-			for _, labelLink := range source.LabelLinks {
-				allSourceLabelIDs = append(allSourceLabelIDs, labelLink.LabelID)
-			}
-		}
-		if len(allSourceLabelIDs) > 0 {
-			var valid []uint64
-			tx.Model(&model.Label{}).Where("id IN ? AND project_id = ?", allSourceLabelIDs, targetIssue.ProjectID).Pluck("id", &valid)
-			for _, id := range valid {
-				validLabelIDs[id] = true
-			}
-		}
-		for _, source := range sourceIssues {
-			for _, labelLink := range source.LabelLinks {
-				if !validLabelIDs[labelLink.LabelID] {
-					continue
-				}
-				var exists bool
-				tx.Model(&targetIssue).Where("issue_id = ? AND label_id = ?", targetIssue.ID, labelLink.LabelID).
-					First(&model.IssueLabel{}).Scan(&exists)
-				if !exists {
-					tx.Create(&model.IssueLabel{IssueID: targetIssue.ID, LabelID: labelLink.LabelID})
-				}
-			}
-		}
-	}
-
-	if req.KeepSourceAssignees {
-		for _, source := range sourceIssues {
-			for _, assigneeLink := range source.AssigneeLinks {
-				var exists bool
-				tx.Model(&targetIssue).Where("issue_id = ? AND user_id = ?", targetIssue.ID, assigneeLink.UserID).
-					First(&model.IssueAssignee{}).Scan(&exists)
-				if !exists {
-					tx.Create(&model.IssueAssignee{IssueID: targetIssue.ID, UserID: assigneeLink.UserID})
-				}
-			}
-		}
+	if tx.Error != nil {
+		return nil, common.Internal("Failed to begin transaction")
 	}
 
 	for _, source := range sourceIssues {
-		tx.Delete(&source)
-	}
+		already, existingTarget, err := s.existingMergeTarget(tx, source.ID, dupRelType.ID)
+		if err != nil {
+			tx.Rollback()
+			return nil, err
+		}
+		if already {
+			if existingTarget == targetIssue.ID {
+				continue // idempotent no-op for this source
+			}
+			tx.Rollback()
+			return nil, common.Conflict("Source issue already merged into a different target")
+		}
 
-	sourceIDsStr := fmt.Sprintf("%v", req.SourceIssueIDs)
-	s.createActivity(tx, targetIssue.ID, "merged", nil,
-		&sourceIDsStr, nil, nil, &userID)
+		if keepLabels {
+			for _, labelLink := range source.LabelLinks {
+				var label model.Label
+				if err := tx.Where("id = ? AND project_id = ?", labelLink.LabelID, targetIssue.ProjectID).First(&label).Error; err != nil {
+					continue
+				}
+				var n int64
+				tx.Model(&model.IssueLabel{}).Where("issue_id = ? AND label_id = ?", targetIssue.ID, labelLink.LabelID).Count(&n)
+				if n == 0 {
+					if err := tx.Create(&model.IssueLabel{IssueID: targetIssue.ID, LabelID: labelLink.LabelID}).Error; err != nil {
+						tx.Rollback()
+						return nil, common.Internal("Failed to copy label")
+					}
+				}
+			}
+		}
+
+		if keepAssignees {
+			for _, assigneeLink := range source.AssigneeLinks {
+				var n int64
+				tx.Model(&model.IssueAssignee{}).Where("issue_id = ? AND user_id = ?", targetIssue.ID, assigneeLink.UserID).Count(&n)
+				if n == 0 {
+					if err := tx.Create(&model.IssueAssignee{IssueID: targetIssue.ID, UserID: assigneeLink.UserID}).Error; err != nil {
+						tx.Rollback()
+						return nil, common.Internal("Failed to copy assignee")
+					}
+				}
+			}
+		}
+
+		comment := fmt.Sprintf("merged into #%d", targetIssue.SequenceID)
+		if err := tx.Create(&model.IssueRelation{
+			IssueID:        source.ID,
+			RelatedIssueID: targetIssue.ID,
+			RelationTypeID: dupRelType.ID,
+			Comment:        &comment,
+		}).Error; err != nil {
+			tx.Rollback()
+			return nil, common.Internal("Failed to create duplicate relation")
+		}
+
+		if cancelledStateID != 0 && source.StateID != cancelledStateID {
+			oldState := strconv.FormatUint(source.StateID, 10)
+			newState := strconv.FormatUint(cancelledStateID, 10)
+			if err := tx.Model(&model.Issue{}).Where("id = ?", source.ID).Update("state_id", cancelledStateID).Error; err != nil {
+				tx.Rollback()
+				return nil, common.Internal("Failed to update source state")
+			}
+			field := "state_id"
+			s.createActivity(tx, source.ID, "updated", &field, &oldState, &newState, nil, &userID)
+		}
+
+		targetIDStr := strconv.FormatUint(targetIssue.ID, 10)
+		s.createActivity(tx, source.ID, "merged", strPtr("merged_into"), nil, &targetIDStr, nil, &userID)
+		sourceIDStr := strconv.FormatUint(source.ID, 10)
+		s.createActivity(tx, targetIssue.ID, "merged", strPtr("merged_from"), nil, &sourceIDStr, nil, &userID)
+
+		summary := fmt.Sprintf(
+			`<p><em>Merged from #%d: %s</em></p>`,
+			source.SequenceID, html.EscapeString(source.Name),
+		)
+		if stripped := strings.TrimSpace(source.DescriptionHTML); stripped != "" && stripped != "<p></p>" {
+			// Keep a short excerpt; avoid unbounded growth.
+			excerpt := stripped
+			if len([]rune(excerpt)) > 500 {
+				excerpt = string([]rune(excerpt)[:500]) + "…"
+			}
+			summary += excerpt
+		}
+		newDesc := targetIssue.DescriptionHTML + summary
+		if err := tx.Model(&model.Issue{}).Where("id = ?", targetIssue.ID).Update("description_html", newDesc).Error; err != nil {
+			tx.Rollback()
+			return nil, common.Internal("Failed to append merge summary")
+		}
+		targetIssue.DescriptionHTML = newDesc
+	}
 
 	if err := tx.Commit().Error; err != nil {
 		return nil, common.Internal("Failed to commit transaction")
 	}
-
 	return s.buildResponse(targetIssue.ID)
+}
+
+func (s *IssueService) findDuplicateRelationType(workspaceID uint64) (*model.RelationType, error) {
+	var rt model.RelationType
+	err := s.db.Where("workspace_id = ? AND (name = ? OR inward_name = ? OR outward_name = ?)",
+		workspaceID, "重复", "重复于", "被重复于").First(&rt).Error
+	if err == nil {
+		return &rt, nil
+	}
+	// Create workspace default if missing (tests / sparse seeds).
+	rt = model.RelationType{
+		Name: "重复", InwardName: "重复于", OutwardName: "被重复于", WorkspaceID: workspaceID,
+	}
+	if err := s.db.Create(&rt).Error; err != nil {
+		return nil, common.Internal("Failed to ensure duplicate relation type")
+	}
+	return &rt, nil
+}
+
+func (s *IssueService) findCancelledStateID(projectID, workspaceID uint64) (uint64, error) {
+	var st model.State
+	// Prefer project-scoped cancelled state.
+	err := s.db.Where("workspace_id = ? AND project_id = ? AND \"group\" = ?",
+		workspaceID, projectID, common.StateGroupCancelled).First(&st).Error
+	if err == nil {
+		return st.ID, nil
+	}
+	err = s.db.Where("workspace_id = ? AND project_id IS NULL AND \"group\" = ?",
+		workspaceID, common.StateGroupCancelled).First(&st).Error
+	if err != nil {
+		return 0, err
+	}
+	return st.ID, nil
+}
+
+func (s *IssueService) existingMergeTarget(db *gorm.DB, sourceID, dupRelTypeID uint64) (bool, uint64, error) {
+	var rel model.IssueRelation
+	err := db.Where("issue_id = ? AND relation_type_id = ?", sourceID, dupRelTypeID).
+		Order("id ASC").First(&rel).Error
+	if err == gorm.ErrRecordNotFound {
+		return false, 0, nil
+	}
+	if err != nil {
+		return false, 0, common.Internal("Failed to check existing merge relation")
+	}
+	return true, rel.RelatedIssueID, nil
 }
 
 // ==================== Watcher ====================
