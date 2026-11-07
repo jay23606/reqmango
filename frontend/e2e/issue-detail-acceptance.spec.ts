@@ -204,9 +204,8 @@ test.describe('B. Right Sidebar Properties', () => {
     await login(page, request)
     await page.goto(issueUrl(ISSUE_ID), { waitUntil: 'networkidle', timeout: 30000 })
 
-    const dateInputs = page.locator('input[type="date"]')
-    const count = await dateInputs.count()
-    expect(count).toBe(2) // start date + target date
+    // Built-in start + target dates; custom date fields may add more inputs.
+    expect(await page.locator('input[type="date"]').count()).toBeGreaterThanOrEqual(2)
   })
 
   test('B5: Sidebar has AI Agent section with selector', async ({ page, request }) => {
