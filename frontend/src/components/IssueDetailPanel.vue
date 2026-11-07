@@ -51,6 +51,15 @@
               <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1"/></svg>
             </button>
             <button
+              v-if="can('issue:edit')"
+              type="button"
+              data-test="merge-into-btn"
+              class="px-2 py-0.5 text-[11px] font-medium text-gray-600 border border-gray-200 rounded hover:bg-gray-100 transition-colors shrink-0"
+              @click="openMergeDialog"
+            >
+              {{ t('issue.mergeInto') }}
+            </button>
+            <button
               v-if="can('issue:delete')"
               type="button"
               class="p-1 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded transition-colors shrink-0"
@@ -236,6 +245,18 @@
         view="issue_detail"
         @close="showAICopilot = false"
       />
+
+      <MergeIntoIssueDialog
+        v-if="issue"
+        :visible="showMergeDialog"
+        :project-id="projectId"
+        :source-issue-id="issue.id"
+        :source-label="mergeSourceLabel"
+        :project-identifier="projectIdentifier"
+        :initial-target-id="mergePrefillTargetId"
+        @close="showMergeDialog = false"
+        @merged="onMergeSuccess"
+      />
     </div>
   </Teleport>
 </template>
@@ -274,6 +295,7 @@ import type { Agent } from '@/types/agent'
 import ApprovalSubmitDialog from '@/components/ApprovalSubmitDialog.vue'
 import ApprovalDecisionDialog from '@/components/ApprovalDecisionDialog.vue'
 import ApprovalPendingBanner from '@/components/ApprovalPendingBanner.vue'
+import MergeIntoIssueDialog from '@/components/MergeIntoIssueDialog.vue'
 import approvalApi, { type ApprovalResponse } from '@/api/approval'
 import type { FieldVisibilityEvaluateRequest } from '@/api/conditional-field'
 import { useCustomFieldVisibility } from '@/composables/useCustomFieldVisibility'
@@ -335,6 +357,14 @@ const agentAssigning = ref(false)
 const agentStatus = ref<AgentStatus | null>(null)
 const workspaceAgents = ref<Agent[]>([])
 const showAICopilot = ref(false)
+const showMergeDialog = ref(false)
+const mergePrefillTargetId = ref<number | null>(null)
+
+const mergeSourceLabel = computed(() => {
+  if (!issue.value) return ''
+  const prefix = projectIdentifier.value ? `${projectIdentifier.value}-` : '#'
+  return `${prefix}${issue.value.sequence_id} ${issue.value.name || ''}`.trim()
+})
 const saving = ref(false)
 const isWatching = ref(false)
 const projectLabels = ref<Array<{ id: number; name: string; color: string }>>([])
@@ -888,6 +918,19 @@ async function handleToggleWatch() {
   } catch (e: any) {
     toast.error(e?.response?.data?.message || t('issue.saveFailed'))
   }
+}
+
+function openMergeDialog() {
+  mergePrefillTargetId.value = null
+  showMergeDialog.value = true
+}
+
+function onMergeSuccess(targetId: number) {
+  showMergeDialog.value = false
+  mergePrefillTargetId.value = null
+  toast.success(t('issue.mergeIntoSuccess'))
+  close()
+  navigateTo(targetId)
 }
 
 async function handleDelete() {

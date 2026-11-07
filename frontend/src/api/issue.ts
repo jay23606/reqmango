@@ -496,14 +496,23 @@ export async function bulkMoveIssues(
 }
 
 /**
- * 合并两个工作项（source 合并到 target）
+ * Merge source issue(s) into a target issue (soft merge; same project).
  */
 export async function mergeIssues(
-  sourceIssueId: number,
-  targetIssueId: number
-): Promise<any> {
-  const res = await api.post(`/issues/${sourceIssueId}/merge`, {
+  targetIssueId: number,
+  sourceIssueIds: number[],
+  options?: {
+    keepSourceComments?: boolean
+    keepSourceLabels?: boolean
+    keepSourceAssignees?: boolean
+  }
+): Promise<IssueResponse> {
+  const res = await api.post('/issues/merge', {
     target_issue_id: targetIssueId,
+    source_issue_ids: sourceIssueIds,
+    keep_source_comments: options?.keepSourceComments ?? false,
+    keep_source_labels: options?.keepSourceLabels ?? true,
+    keep_source_assignees: options?.keepSourceAssignees ?? true,
   })
   return res.data
 }

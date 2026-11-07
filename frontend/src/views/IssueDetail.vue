@@ -6,8 +6,20 @@
       :is-watching="isWatching"
       @back="goBack"
       @delete="deleteIssue"
+      @merge="openMergeDialog"
       @toggle-watch="handleToggleWatch"
       @update:title="handleTitleSave"
+    />
+
+    <MergeIntoIssueDialog
+      :visible="showMergeDialog"
+      :project-id="projectId"
+      :source-issue-id="issueId"
+      :source-label="mergeSourceLabel"
+      :project-identifier="projectIdentifier"
+      :initial-target-id="mergePrefillTargetId"
+      @close="closeMergeDialog"
+      @merged="onMergeSuccess"
     />
 
     <div class="max-w-6xl mx-auto px-6 pt-4">
@@ -197,6 +209,7 @@ import { useConfirm } from '@/composables/useConfirm'
 import { getIssueCustomFieldsWithDefinitions, updateIssueCustomFieldValue } from '@/api/custom-field'
 import relationApi from '@/api/relation'
 import IssueDetailHeader from '@/components/IssueDetailHeader.vue'
+import MergeIntoIssueDialog from '@/components/MergeIntoIssueDialog.vue'
 import IssuePropertySidebar from '@/components/IssuePropertySidebar.vue'
 import IssueTabDetails from '@/components/IssueTabDetails.vue'
 import IssueTabRelations from '@/components/IssueTabRelations.vue'
@@ -260,6 +273,14 @@ const agentAssigning = ref(false)
 const agentStatus = ref<AgentStatus | null>(null)
 const workspaceAgents = ref<Agent[]>([])
 const showAICopilot = ref(false)
+const showMergeDialog = ref(false)
+const mergePrefillTargetId = ref<number | null>(null)
+
+const mergeSourceLabel = computed(() => {
+  if (!issue.value) return ''
+  const prefix = projectIdentifier.value ? `${projectIdentifier.value}-` : '#'
+  return `${prefix}${issue.value.sequence_id} ${issue.value.name || ''}`.trim()
+})
 const activeApproval = ref<ApprovalResponse | null>(null)
 const issueCopilotLabel = computed(() => {
   if (!issue.value) return ''
@@ -401,6 +422,7 @@ onMounted(async () => {
     ])
     // Load active approval if pending
     await loadActiveApproval()
+    maybeOpenMergeFromQuery()
   } catch (error) {
     console.error('Failed to load issue:', error)
   }
@@ -603,6 +625,36 @@ async function deleteIssue() {
   } catch (e: any) {
     toast.error(e?.response?.data?.message || t('issue.saveFailed'))
   }
+}
+
+function openMergeDialog() {
+  mergePrefillTargetId.value = null
+  showMergeDialog.value = true
+}
+
+function closeMergeDialog() {
+  showMergeDialog.value = false
+  mergePrefillTargetId.value = null
+  const q = { ...route.query }
+  if (q.mergeTargetId) {
+    delete q.mergeTargetId
+    router.replace({ query: q })
+  }
+}
+
+function onMergeSuccess(targetId: number) {
+  showMergeDialog.value = false
+  mergePrefillTargetId.value = null
+  toast.success(t('issue.mergeIntoSuccess'))
+  navigateToIssue(targetId)
+}
+
+function maybeOpenMergeFromQuery() {
+  const raw = route.query.mergeTargetId
+  const id = typeof raw === 'string' ? parseInt(raw, 10) : 0
+  if (!id || !issue.value) return
+  mergePrefillTargetId.value = id
+  showMergeDialog.value = true
 }
 
 async function updateCustomField(fieldId: number, value: string) {

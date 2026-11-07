@@ -71,8 +71,8 @@
             class="mt-2 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900"
           >
             <p class="font-medium mb-1">{{ t('issue.duplicateWarning') }}</p>
-            <ul class="space-y-1">
-              <li v-for="dup in duplicates" :key="dup.id">
+            <ul class="space-y-2">
+              <li v-for="dup in duplicates" :key="dup.id" class="flex flex-wrap items-center gap-2">
                 <router-link
                   :to="issueLink(dup.id)"
                   class="text-amber-800 underline hover:text-amber-950"
@@ -80,6 +80,15 @@
                 >
                   #{{ dup.sequence_id }} {{ dup.name }}
                 </router-link>
+                <button
+                  type="button"
+                  class="text-xs px-2 py-0.5 rounded border border-amber-300 text-amber-900 hover:bg-amber-100"
+                  data-test="merge-into-suggestion"
+                  :disabled="saving"
+                  @click="startMergeIntoSuggestion(dup)"
+                >
+                  {{ t('issue.mergeIntoFromSuggestion') }}
+                </button>
               </li>
             </ul>
           </div>
@@ -305,6 +314,7 @@ const formData = ref({
 })
 const selectedLabelIds = ref<number[]>([])
 const duplicates = ref<DuplicateIssueItem[]>([])
+const pendingMergeTargetId = ref<number | null>(null)
 let duplicateTimer: ReturnType<typeof setTimeout> | null = null
 
 function issueLink(issueId: number) {
@@ -312,6 +322,18 @@ function issueLink(issueId: number) {
     return `/workspace/${slug.value}/project/${projectId.value}/issues/${issueId}`
   }
   return `/workspaces/${workspaceId.value}/projects/${projectId.value}/issues/${issueId}`
+}
+
+function issueDetailPath(issueId: number, query?: Record<string, string>) {
+  const base = issueLink(issueId)
+  if (!query || Object.keys(query).length === 0) return base
+  const params = new URLSearchParams(query)
+  return `${base}?${params.toString()}`
+}
+
+async function startMergeIntoSuggestion(dup: DuplicateIssueItem) {
+  pendingMergeTargetId.value = dup.id
+  await submitForm()
 }
 
 async function runDuplicateCheck() {
@@ -745,6 +767,13 @@ async function submitForm() {
     }
 
     emit('created', issue)
+
+    if (pendingMergeTargetId.value && issue?.id) {
+      const mergeQuery = { mergeTargetId: String(pendingMergeTargetId.value) }
+      pendingMergeTargetId.value = null
+      router.push(issueDetailPath(issue.id, mergeQuery))
+      return
+    }
 
     const query: Record<string, string> = { view: returnView.value }
     if (issue?.id) query.issue = String(issue.id)
