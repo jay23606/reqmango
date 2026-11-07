@@ -14,6 +14,30 @@ type TimeTrackService struct{ db *gorm.DB }
 
 func NewTimeTrackService(db *gorm.DB) *TimeTrackService { return &TimeTrackService{db: db} }
 
+// Create logs a completed time entry manually. Duration is seconds.
+func (s *TimeTrackService) Create(issueID, userID uint64, req *request.TimeTrackCreateRequest) (*response.TimeTrackResponse, error) {
+	if req.Duration < 1 {
+		return nil, common.BadRequest("duration must be at least 1 second")
+	}
+	ended := time.Now()
+	if req.EndedAt != nil {
+		ended = *req.EndedAt
+	}
+	started := ended.Add(-time.Duration(req.Duration) * time.Second)
+	t := &model.TimeTrack{
+		IssueID:     issueID,
+		UserID:      userID,
+		Description: req.Description,
+		StartedAt:   started,
+		EndedAt:     &ended,
+		Duration:    req.Duration,
+	}
+	if err := s.db.Create(t).Error; err != nil {
+		return nil, common.Internal("Failed to create time entry")
+	}
+	return toResponse(t), nil
+}
+
 // Start begins a timer for an issue.
 func (s *TimeTrackService) Start(issueID, userID uint64, req *request.TimeTrackStartRequest) (*response.TimeTrackResponse, error) {
 	// Stop any running timer for this user

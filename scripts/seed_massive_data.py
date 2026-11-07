@@ -591,23 +591,25 @@ def main():
                 base_dt = datetime.datetime.combine(base_dt, datetime.time(9, 0))
                 for t in range(n):
                     ts = base_dt + datetime.timedelta(days=t * rng.randint(0, 2), hours=rng.randint(0, 8))
-                    dur = rng.randint(15, 480)
+                    dur_min = rng.randint(15, 480)
+                    dur = dur_min * 60  # runtime stores seconds
+                    ended = ts + datetime.timedelta(seconds=dur)
                     tracker = users[rng.randint(0, len(users)-1)]
                     tdesc = track_descs[rng.randint(0, len(track_descs)-1)]
-                    batch.append((issue_id, tracker["id"], ts.isoformat(), dur, tdesc))
+                    batch.append((issue_id, tracker["id"], ts.isoformat(), ended.isoformat(), dur, tdesc))
                     total_tt += 1
                     if len(batch) >= 300:
                         psycopg2.extras.execute_values(cur, """
-                            INSERT INTO time_tracks (issue_id, user_id, started_at, duration, description, created_at, updated_at)
+                            INSERT INTO time_tracks (issue_id, user_id, started_at, ended_at, duration, description, created_at, updated_at)
                             VALUES %s
-                        """, batch, template="(%s, %s, %s, %s, %s, NOW(), NOW())")
+                        """, batch, template="(%s, %s, %s, %s, %s, %s, NOW(), NOW())")
                         conn.commit()
                         batch = []
     if batch:
         psycopg2.extras.execute_values(cur, """
-            INSERT INTO time_tracks (issue_id, user_id, started_at, duration, description, created_at, updated_at)
+            INSERT INTO time_tracks (issue_id, user_id, started_at, ended_at, duration, description, created_at, updated_at)
             VALUES %s
-        """, batch, template="(%s, %s, %s, %s, %s, NOW(), NOW())")
+        """, batch, template="(%s, %s, %s, %s, %s, %s, NOW(), NOW())")
         conn.commit()
     print(f"  Created {total_tt} time tracks")
 

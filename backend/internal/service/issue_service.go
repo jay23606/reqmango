@@ -48,6 +48,33 @@ func (s *IssueService) DB() *gorm.DB {
 }
 
 // validateLabelsBelongToProject returns 400 if any label ID does not belong to the project.
+// validateEstimatePointID ensures the point belongs to the project.
+// A nil id or id==0 means "no estimate" (cleared).
+func (s *IssueService) validateEstimatePointID(projectID uint64, id *uint64) (*uint64, error) {
+	if id == nil || *id == 0 {
+		return nil, nil
+	}
+	var point model.EstimatePoint
+	if err := s.db.Where("id = ? AND project_id = ?", *id, projectID).First(&point).Error; err != nil {
+		return nil, common.BadRequest("Estimate point not found in this project")
+	}
+	return id, nil
+}
+
+// lookupEstimatePointID maps a CSV estimate numeric/name value to a project point id.
+func (s *IssueService) lookupEstimatePointID(projectID uint64, value float64) *uint64 {
+	intVal := int(value)
+	var point model.EstimatePoint
+	if err := s.db.Where("project_id = ? AND value = ?", projectID, intVal).Order("sequence ASC").First(&point).Error; err == nil {
+		return &point.ID
+	}
+	name := strconv.FormatFloat(value, 'f', -1, 64)
+	if err := s.db.Where("project_id = ? AND name = ?", projectID, name).Order("sequence ASC").First(&point).Error; err == nil {
+		return &point.ID
+	}
+	return nil
+}
+
 func validateLabelsBelongToProject(db *gorm.DB, labelIDs []uint64, projectID uint64) error {
 	if len(labelIDs) == 0 {
 		return nil
@@ -194,6 +221,11 @@ func (s *IssueService) Create(req *request.IssueCreateRequest, projectID, worksp
 	descHTML := security.SanitizeHTML(req.DescriptionHTML)
 	descStripped := security.StripHTMLTags(descHTML)
 
+	estimatePointID, err := s.validateEstimatePointID(projectID, req.EstimatePointID)
+	if err != nil {
+		return nil, err
+	}
+
 	issue := &model.Issue{
 		Name:                req.Name,
 		DescriptionHTML:     descHTML,
@@ -210,6 +242,7 @@ func (s *IssueService) Create(req *request.IssueCreateRequest, projectID, worksp
 		ExternalSource:      req.ExternalSource,
 		CoverImageURL:       req.CoverImageURL,
 		IssueTypeID:         persistedTypeID,
+		EstimatePointID:     estimatePointID,
 	}
 	issue.CreatedByID = &userID
 	issue.UpdatedByID = &userID
@@ -963,6 +996,22 @@ func (s *IssueService) Update(issueID uint64, req *request.IssueUpdateRequest, u
 			tx.Create(&model.ModuleIssue{IssueID: issueID, ModuleID: mid})
 		}
 		s.createActivity(tx, issueID, "updated", strPtr("module"), nil, nil, nil, &userID)
+		hasChanges = true
+	}
+
+	// Handle estimate point (0 clears; omit leaves unchanged)
+	if req.EstimatePointID != nil {
+		pointID, estErr := s.validateEstimatePointID(issue.ProjectID, req.EstimatePointID)
+		if estErr != nil {
+			tx.Rollback()
+			return nil, estErr
+		}
+		issue.EstimatePointID = pointID
+		if err := tx.Model(&issue).Update("estimate_point_id", pointID).Error; err != nil {
+			tx.Rollback()
+			return nil, common.Internal("Failed to update estimate point")
+		}
+		s.createActivity(tx, issueID, "updated", strPtr("estimate_point"), nil, nil, nil, &userID)
 		hasChanges = true
 	}
 
@@ -1833,6 +1882,7 @@ func (s *IssueService) BuildIssueResponse(issue *model.Issue) (*response.IssueRe
 		ExternalID:      issue.ExternalID,
 		ExternalSource:  issue.ExternalSource,
 		CoverImageURL:   issue.CoverImageURL,
+		EstimatePointID: issue.EstimatePointID,
 		LinkCount:       0,
 		AttachmentCount: 0,
 		CreatedAt:       issue.CreatedAt,
@@ -2463,6 +2513,11 @@ func (s *IssueService) importItems(projectID, workspaceID, userID uint64, items 
 		}
 		if item.TargetDate != "" {
 			createReq.TargetDate = &item.TargetDate
+		}
+		if item.EstimatePoints != nil {
+			if pid := s.lookupEstimatePointID(projectID, *item.EstimatePoints); pid != nil {
+				createReq.EstimatePointID = pid
+			}
 		}
 
 		resp, svcErr := s.Create(createReq, projectID, workspaceID, userID)

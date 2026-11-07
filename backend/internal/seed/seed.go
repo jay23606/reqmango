@@ -929,7 +929,9 @@ func SeedDemoData(db *gorm.DB) {
 				numTracks := 1 + rng.Intn(8)
 				for t := 0; t < numTracks; t++ {
 					trackStart := startDate.Add(time.Duration(t) * time.Hour * 24 * time.Duration(rng.Intn(3)))
-					duration := int64(rng.Intn(480) + 15) // 15 min to 8 hours in minutes
+					durationMin := int64(rng.Intn(480) + 15) // 15 min to 8 hours
+					duration := durationMin * 60             // store seconds (runtime unit)
+					trackEnd := trackStart.Add(time.Duration(duration) * time.Second)
 					tracker := users[rng.Intn(len(users))]
 					descTexts := []string{"需求分析", "技术方案设计", "编码实现", "Code Review修改", "自测", "修复测试问题", "文档编写", "部署验证"}
 					trackDesc := descTexts[rng.Intn(len(descTexts))]
@@ -937,6 +939,7 @@ func SeedDemoData(db *gorm.DB) {
 						IssueID:     issue.ID,
 						UserID:      tracker.ID,
 						StartedAt:   trackStart,
+						EndedAt:     &trackEnd,
 						Duration:    duration,
 						Description: strPtr(trackDesc),
 					})
