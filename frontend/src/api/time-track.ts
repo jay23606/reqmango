@@ -20,3 +20,12 @@ export async function getTimeSummary(issueId: number): Promise<TimeTrackSummary>
 export async function deleteTimeTrack(issueId: number, id: number): Promise<void> {
   await api.delete(`/issues/${issueId}/time-tracks/${id}`)
 }
+
+/** duration is seconds */
+export async function createTimeTrack(
+  issueId: number,
+  data: { duration: number; description?: string; ended_at?: string }
+): Promise<TimeTrack> {
+  const r = await api.post(`/issues/${issueId}/time-tracks`, data)
+  return r.data
+}

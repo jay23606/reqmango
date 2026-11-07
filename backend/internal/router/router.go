@@ -768,7 +768,7 @@ func SetupRoutes(r *gin.Engine, db *gorm.DB, cfg *config.Config) {
 			}
 
 			// ---- Project Time Tracking Summary ----
-			projects.GET("/:projectId/time-tracks/summary", timeTrackH.ProjectSummary)
+			projects.GET("/:projectId/time-tracks/summary", middleware.RequirePermission(db, "time_track:view", "project"), timeTrackH.ProjectSummary)
 
 			// ---- Project Issue Types ----
 			projTypes := projects.Group("/:projectId/issue-types", authMiddleware)
@@ -854,30 +854,33 @@ func SetupRoutes(r *gin.Engine, db *gorm.DB, cfg *config.Config) {
 			// ---- Estimates ----
 			estimates := projects.Group("/:projectId/estimate-points", authMiddleware)
 			{
+				settingsManageEstimate := middleware.RequirePermission(db, "settings:manage", "project")
 				estimates.GET("/settings", estimateH.GetSettings)
-				estimates.PUT("/settings", estimateH.UpdateSettings)
+				estimates.PUT("/settings", settingsManageEstimate, estimateH.UpdateSettings)
 				estimates.GET("", estimateH.ListPoints)
-				estimates.POST("", estimateH.CreatePoint)
+				estimates.POST("", settingsManageEstimate, estimateH.CreatePoint)
 				estimates.GET("/:pointId", estimateH.GetPoint)
-				estimates.PATCH("/:pointId", estimateH.UpdatePoint)
-				estimates.DELETE("/:pointId", estimateH.DeletePoint)
-				estimates.POST("/reorder", estimateH.ReorderPoints)
-				estimates.POST("/bulk", estimateH.BulkCreatePoints)
-				estimates.POST("/defaults", estimateH.CreateDefaultPoints)
+				estimates.PATCH("/:pointId", settingsManageEstimate, estimateH.UpdatePoint)
+				estimates.DELETE("/:pointId", settingsManageEstimate, estimateH.DeletePoint)
+				estimates.POST("/reorder", settingsManageEstimate, estimateH.ReorderPoints)
+				estimates.POST("/bulk", settingsManageEstimate, estimateH.BulkCreatePoints)
+				estimates.POST("/defaults", settingsManageEstimate, estimateH.CreateDefaultPoints)
 			}
 
 			estimateCategories := projects.Group("/:projectId/estimate-categories", authMiddleware)
 			{
+				settingsManageEstimate := middleware.RequirePermission(db, "settings:manage", "project")
 				estimateCategories.GET("", estimateH.ListCategories)
-				estimateCategories.POST("", estimateH.CreateCategory)
-				estimateCategories.POST("/defaults", estimateH.CreateDefaultCategories)
+				estimateCategories.POST("", settingsManageEstimate, estimateH.CreateCategory)
+				estimateCategories.POST("/defaults", settingsManageEstimate, estimateH.CreateDefaultCategories)
 			}
 
 			estimateTime := projects.Group("/:projectId/estimate-time", authMiddleware)
 			{
+				settingsManageEstimate := middleware.RequirePermission(db, "settings:manage", "project")
 				estimateTime.GET("", estimateH.ListTime)
-				estimateTime.POST("", estimateH.CreateTime)
-				estimateTime.POST("/defaults", estimateH.CreateDefaultTime)
+				estimateTime.POST("", settingsManageEstimate, estimateH.CreateTime)
+				estimateTime.POST("/defaults", settingsManageEstimate, estimateH.CreateDefaultTime)
 			}
 
 			// ---- Project Settings: States + Labels ----
@@ -974,12 +977,13 @@ func SetupRoutes(r *gin.Engine, db *gorm.DB, cfg *config.Config) {
 			issues.POST("/:issueId/cycle", middleware.RequirePermission(db, "issue:edit", "project"), issueH.SetCycle) // ?cycle_id=
 			issues.DELETE("/:issueId/cycle", middleware.RequirePermission(db, "issue:edit", "project"), issueH.RemoveCycle)
 
-			// Time Tracks
-			issues.POST("/:issueId/time-tracks/start", timeTrackH.Start)
-			issues.POST("/:issueId/time-tracks/stop", timeTrackH.Stop)
-			issues.GET("/:issueId/time-tracks", timeTrackH.List)
-			issues.GET("/:issueId/time-tracks/summary", timeTrackH.Summary)
-			issues.DELETE("/:issueId/time-tracks/:id", timeTrackH.Delete)
+			// Time Tracks (duration unit: seconds)
+			issues.POST("/:issueId/time-tracks", middleware.RequirePermission(db, "time_track:create", "project"), timeTrackH.Create)
+			issues.POST("/:issueId/time-tracks/start", middleware.RequirePermission(db, "time_track:create", "project"), timeTrackH.Start)
+			issues.POST("/:issueId/time-tracks/stop", middleware.RequirePermission(db, "time_track:create", "project"), timeTrackH.Stop)
+			issues.GET("/:issueId/time-tracks", middleware.RequirePermission(db, "time_track:view", "project"), timeTrackH.List)
+			issues.GET("/:issueId/time-tracks/summary", middleware.RequirePermission(db, "time_track:view", "project"), timeTrackH.Summary)
+			issues.DELETE("/:issueId/time-tracks/:id", middleware.RequirePermission(db, "time_track:delete", "project"), timeTrackH.Delete)
 
 			// Recurrence
 			issues.POST("/:issueId/recurrence", recurrenceH.Create)

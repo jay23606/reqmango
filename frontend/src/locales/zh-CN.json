@@ -162,6 +162,7 @@
     "modulePlaceholder": "选择模块",
     "release": "发布版本",
     "releasePlaceholder": "选择发布版本",
+    "estimate": "估点",
     "startDate": "开始日期",
     "endDate": "结束日期",
     "targetDate": "截止日期",
@@ -3768,10 +3769,15 @@
     "stop": "停止",
     "running": "计时中...",
     "noEntries": "暂无时间记录",
+    "noDescription": "无描述",
     "totalHours": "总工时",
     "entries": "条记录",
     "projectSummary": "项目工时统计",
-    "byUser": "按用户"
+    "byUser": "按用户",
+    "manualMinutes": "分钟",
+    "description": "描述",
+    "logTime": "记录工时",
+    "spent": "已记录"
   },
   "integrations": {
     "title": "集成",

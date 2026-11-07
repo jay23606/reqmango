@@ -201,6 +201,7 @@
                 @update:cycle="quickUpdateCycle"
                 @update:module="quickUpdateModule"
                 @update:release="quickUpdateRelease"
+                @update:estimate="quickUpdateEstimate"
                 @update:start-date="(d: any) => quickUpdate('start_date', d + 'T00:00:00Z')"
                 @update:target-date="(d: any) => quickUpdate('target_date', d + 'T00:00:00Z')"
                 @update:labels="handleLabelsUpdate"
@@ -800,6 +801,10 @@ async function quickUpdateModule(moduleId: number | null) {
 
 async function quickUpdateRelease(releaseId: number | null) {
   await quickUpdate('release_id', releaseId ?? 0)
+}
+
+async function quickUpdateEstimate(estimatePointId: number | null) {
+  await quickUpdate('estimate_point_id', estimatePointId ?? 0)
 }
 
 async function updateCustomField(fieldId: number, value: string) {

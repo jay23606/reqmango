@@ -24,6 +24,7 @@ import GitIntegrationSettings from '@/components/GitIntegrationSettings.vue'
 import AutomationRuleBuilder from '@/components/AutomationRuleBuilder.vue'
 import AutomationExecutionLog from '@/components/AutomationExecutionLog.vue'
 import TriagePanel from '@/components/TriagePanel.vue'
+import EstimatePointManager from '@/components/EstimatePointManager.vue'
 import relationApi from '@/api/relation'
 import { useProjectPermissions } from '@/composables/usePermission'
 
@@ -159,6 +160,7 @@ const menuItems = computed(() => [
   { id: 'members', label: t('settings.members'), icon: '👥' },
   { id: 'states', label: t('settings.states'), icon: '🔄' },
   { id: 'labels', label: t('settings.labels'), icon: '🏷️' },
+  { id: 'estimates', label: t('settings.estimatePoints'), icon: '📐' },
   { id: 'issue-types', label: t('settings.issueTypes'), icon: '📐' },
   { id: 'templates', label: t('settings.templates'), icon: '📋' },
   { id: 'releases', label: t('settings.releases'), icon: '🚀' },
@@ -937,6 +939,11 @@ watch(() => route.query.section, (section) => {
               <div v-if="labels.length === 0" class="w-full text-center text-gray-400 py-8">{{ t('settings.noLabels') }}</div>
             </div>
           </div>
+        </div>
+
+        <!-- Estimates -->
+        <div v-if="!loading && activeSection === 'estimates'" data-test="project-estimates-section" class="bg-white rounded-lg border border-gray-200 p-4">
+          <EstimatePointManager :project-id="projectId" />
         </div>
 
         <!-- Issue Types -->

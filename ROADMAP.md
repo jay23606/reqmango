@@ -43,7 +43,7 @@ Process: [docs/dev/sdd.md](docs/dev/sdd.md). Historical notes:
 ## Later — deeper workflows
 
 - [x] [Merge duplicate work items](docs/specs/2026-11-07-merge-duplicates.md) ([PR #33](https://github.com/vinthuy/reqmango/pull/33))
-- Time tracking and estimate categories
+- [x] Time tracking and estimate categories (P0: issue estimate points + manual time log + settings mount — `docs/specs/2026-11-07-time-tracking-estimates.md`; categories/time-mode on issues still Later)
 - Recurring work items
 - Release management polish and a release picker in the item view
 

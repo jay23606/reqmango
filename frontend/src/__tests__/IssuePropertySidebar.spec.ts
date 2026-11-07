@@ -7,6 +7,12 @@ const { mockActivity } = vi.hoisted(() => ({ mockActivity: vi.fn() }))
 vi.mock('@/api/agent', () => ({
   agentApi: { listWorkspaceActivity: (...args: any[]) => mockActivity(...args) },
 }))
+vi.mock('@/api/estimate-point', () => ({
+  listEstimatePoints: vi.fn().mockResolvedValue([{ id: 9, name: '3', value: 3 }]),
+}))
+vi.mock('@/api/time-track', () => ({
+  getTimeSummary: vi.fn().mockResolvedValue({ total_seconds: 1800, total_hours: 0.5, entry_count: 1, is_running: false }),
+}))
 vi.mock('@/composables/useI18n', () => ({
   useI18n: () => ({ t: (k: string) => k }),
 }))
@@ -16,9 +22,10 @@ vi.mock('@/composables/useToast', () => ({
 }))
 
 const mockIssue = {
-  id: 42, state_id: 1, priority: 'high',
+  id: 42, project_id: 7, state_id: 1, priority: 'high',
   assignees: [{ id: 1, display_name: 'Alice' }],
-  cycle_id: 5, start_date: '2026-07-01', target_date: '2026-07-10',
+  cycle_id: 5, estimate_point_id: 9,
+  start_date: '2026-07-01', target_date: '2026-07-10',
 }
 
 const mockStates = [
@@ -65,13 +72,16 @@ describe('IssuePropertySidebar', () => {
     mockToastWarning.mockClear()
   })
 
-  it('renders state, priority and assignee pickers with current values', () => {
+  it('renders state, priority and assignee pickers with current values', async () => {
     const wrapper = mount(IssuePropertySidebar, mountOptions)
+    await wrapper.vm.$nextTick()
+    await Promise.resolve()
     expect(wrapper.text()).toContain('issue.state')
     expect(wrapper.find('[data-testid="picker-state"]').text()).toContain('To Do')
     expect(wrapper.find('[data-testid="picker-priority"]').text()).toContain('issue.priorityHigh')
     expect(wrapper.find('[data-testid="picker-assignee"]').text()).toContain('Alice')
     expect(wrapper.find('[data-testid="picker-cycle"]').text()).toContain('Sprint 5')
+    expect(wrapper.find('[data-testid="picker-estimate"]').exists()).toBe(true)
   })
 
   async function pickOption(wrapper: ReturnType<typeof mount>, testId: string, label: string) {

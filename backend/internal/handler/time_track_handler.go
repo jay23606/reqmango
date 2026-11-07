@@ -24,6 +24,21 @@ func (h *TimeTrackHandler) getUserID(c *gin.Context) uint64 {
 	return 0
 }
 
+func (h *TimeTrackHandler) Create(c *gin.Context) {
+	issueID, _ := strconv.ParseUint(c.Param("issueId"), 10, 64)
+	var req request.TimeTrackCreateRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(400, gin.H{"message": err.Error()})
+		return
+	}
+	r, err := h.svc.Create(issueID, h.getUserID(c), &req)
+	if err != nil {
+		common.RespondError(c, err)
+		return
+	}
+	c.JSON(201, r)
+}
+
 func (h *TimeTrackHandler) Start(c *gin.Context) {
 	issueID, _ := strconv.ParseUint(c.Param("issueId"), 10, 64)
 	var req request.TimeTrackStartRequest

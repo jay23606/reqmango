@@ -123,6 +123,23 @@
         </div>
       </div>
 
+      <div class="prop-row">
+        <label class="prop-label">{{ t('issue.estimate') }}</label>
+        <div class="prop-control">
+          <PropertyPicker
+            data-testid="picker-estimate"
+            :model-value="issue.estimate_point_id ?? null"
+            :options="estimateOptions"
+            :disabled="isLocked"
+            clearable
+            @update:model-value="(v) => emit('update:estimate', toId(v))"
+          />
+        </div>
+      </div>
+      <p v-if="spentLabel" class="px-1 -mt-1 mb-1 text-[10px] text-gray-400" data-testid="estimate-spent">
+        {{ spentLabel }}
+      </p>
+
       <!-- Dates & labels -->
       <p class="pt-2 pb-1 text-[10px] font-semibold text-gray-400 uppercase tracking-wide border-t border-gray-100 mt-1">{{ t('issue.startDate') }}</p>
 
@@ -284,10 +301,13 @@
 </template>
 
 <script setup lang="ts">
-import { ref, watch, computed, nextTick } from 'vue'
+import { ref, watch, computed, nextTick, onMounted } from 'vue'
 import { useI18n } from '@/composables/useI18n'
 import { useToast } from '@/composables/useToast'
 import { isEmptyIssueCustomFieldValue } from '@/utils/issue-custom-field-empty'
+import { listEstimatePoints } from '@/api/estimate-point'
+import { getTimeSummary } from '@/api/time-track'
+import type { EstimatePoint } from '@/types/estimate-point'
 import AgentSelector from '@/components/AgentSelector.vue'
 import LabelSelector from '@/components/LabelSelector.vue'
 import PropertyPicker, { type PickerOption } from '@/components/PropertyPicker.vue'
@@ -364,6 +384,7 @@ const emit = defineEmits<{
   (e: 'update:cycle', cycleId: number | null): void
   (e: 'update:module', moduleId: number | null): void
   (e: 'update:release', releaseId: number | null): void
+  (e: 'update:estimate', estimatePointId: number | null): void
   (e: 'update:startDate', date: string): void
   (e: 'update:targetDate', date: string): void
   (e: 'update:customField', fieldId: number, value: string): void
@@ -372,6 +393,44 @@ const emit = defineEmits<{
   (e: 'unassign-agent'): void
   (e: 'update:labels', labelIds: number[]): void
 }>()
+
+const { t, locale } = useI18n()
+const toast = useToast()
+
+const estimatePoints = ref<EstimatePoint[]>([])
+const spentSeconds = ref(0)
+
+async function loadEstimateAndSpent() {
+  const projectId = Number(props.issue?.project_id || 0)
+  const issueId = Number(props.issue?.id || 0)
+  if (projectId) {
+    try {
+      estimatePoints.value = await listEstimatePoints(projectId)
+    } catch { /* ignore */ }
+  }
+  if (issueId) {
+    try {
+      const s = await getTimeSummary(issueId)
+      spentSeconds.value = s.total_seconds || 0
+    } catch { /* ignore */ }
+  }
+}
+
+onMounted(loadEstimateAndSpent)
+watch(() => [props.issue?.id, props.issue?.project_id, props.issue?.estimate_point_id], loadEstimateAndSpent)
+
+const estimateOptions = computed<PickerOption[]>(() =>
+  estimatePoints.value.map((p) => ({
+    value: p.id,
+    label: p.name || String(p.value),
+  }))
+)
+
+const spentLabel = computed(() => {
+  if (!spentSeconds.value) return ''
+  const h = (spentSeconds.value / 3600).toFixed(1)
+  return `${t('timeTrack.spent')}: ${h}h`
+})
 
 const localAgentId = ref('')
 const syncingAgent = ref(false)
@@ -395,9 +454,6 @@ function emitAssign() {
   if (!hasAgentSelected.value) return
   emit('assign-agent', localAgentId.value)
 }
-
-const { t, locale } = useI18n()
-const toast = useToast()
 
 const agentActivities = ref<AgentActivity[]>([])
 
