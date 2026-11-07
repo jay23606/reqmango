@@ -2,7 +2,7 @@
 
 | 项 | 值 |
 |----|-----|
-| 状态 | 已冻结 |
+| 状态 | 已实现 |
 | 日期 | 2026-11-07 |
 | 关联 | ROADMAP Later · [sdd.md](../dev/sdd.md) |
 | 依赖 | 既有 `time_tracks` / `estimate_points` / `project_estimate_settings` API |
