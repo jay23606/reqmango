@@ -68,6 +68,17 @@ v0.2.0：必填/条件字段、软合并重复项、工时与估点、子项/附
 国内克隆镜像：https://gitcode.com/yongfeng9m-/reqmanpy
 ```
 
+## Already posted (2026-11-07)
+
+| Channel | URL |
+|---------|-----|
+| GitHub Show and tell | https://github.com/vinthuy/reqmango/discussions/39 |
+| GitHub Announcements | https://github.com/vinthuy/reqmango/discussions/40 |
+
+## Still needs your login
+
+HN / Reddit / V2EX require interactive login (Cloudflare / 2FA). Paste the sections above after signing in.
+
 ## Maintainer notes
 
 - Post HN on a weekday US morning if possible; reply to every top-level comment for 24h.
