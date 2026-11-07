@@ -1,6 +1,10 @@
-# GitCode 主场推广（可粘贴）
+# GitCode 镜像说明（历史推广稿）
 
-> 承接另一会话策略：**GitCode = 国内共建主场**；外站已发的不再追；这里只做仓库内可见动作。  
+> **2026-11-07 起：GitHub 为协作主战场**（Issue / PR）。GitCode 仅作国内克隆镜像。  
+> 新发帖文案见 [outreach-v0.2.md](./outreach-v0.2.md)。下文为历史粘贴稿，勿再把 GitCode 写成「主场」。
+>
+> 承接旧策略：**GitCode 曾作国内共建主场**；外站已发的不再追。  
+
 > 仓库：https://gitcode.com/yongfeng9m-/reqmanpy
 
 ## 本周在 GitCode 上做这 4 件
